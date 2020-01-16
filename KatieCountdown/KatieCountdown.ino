@@ -24,7 +24,14 @@ LiquidCrystal lcd(9, 8, 6, 5, 4, 3);
 
 RTC_DS1307 rtc;
 
-byte displayMode; // 0, 1, 2, 3, etc. The text shown on the screen, depending on modulo of time.seconds at bootup
+const byte numDisplayModes = 5;
+
+// Defines the heading-countdown combination of text shown on the screen
+// values are positive ints: 1, 2, 3, etc., button press increments the mode
+// loop does nothing with mode 0, so after setup, button press will increment to 1, and begin the interface
+byte displayMode = 0;
+
+bool buttonDown = false;
 
 //char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
@@ -231,6 +238,103 @@ void displayTimeTogetherCounts()
   
 }
 
+void buttonPress()
+{
+
+  if (displayMode == numDisplayModes)
+  {
+    displayMode = 1;
+  } else {
+    displayMode++;
+  }
+
+  lcd.clear();
+  Serial.print(F("displayMode is "));
+  Serial.println(displayMode);
+  switch (displayMode) {
+    case 1:
+      // How long has it been setup
+      lcd.setCursor(0, 0);
+      lcd.print("How long has it");
+      lcd.setCursor(0, 1);
+      lcd.print("been? ");
+      lcd.print(hoot.year(), DEC);
+      lcd.print('/');
+      lcd.print(hoot.month(), DEC);
+      lcd.print('/');
+      lcd.print(hoot.day(), DEC);
+    
+      for (byte num = 0; num < 5; num++) {
+        lcd.setCursor(4, 1);
+        lcd.print(' ');
+        delay(stdFlash);
+        lcd.setCursor(4, 1);
+        lcd.print('?');
+        delay(stdFlash);
+      }
+      lcd.clear();
+      break;
+    case 2:
+      // How long until next anniversary
+      lcd.setCursor(0, 0);
+      lcd.print("How long until");
+      lcd.setCursor(0, 1);
+      lcd.print("our anniversary?");
+  
+      for (byte num = 0; num < 5; num++) {
+        lcd.setCursor(15, 1);
+        lcd.print(' ');
+        delay(stdFlash);
+        lcd.setCursor(15, 1);
+        lcd.print('?');
+        delay(stdFlash);
+      }
+      lcd.clear();
+      break;
+    case 3:
+      // Pin instructions for how long alive
+      lcd.setCursor(0, 0);
+      lcd.print("How long alive?");
+      lcd.setCursor(0, 1);
+      lcd.print("Connect GND<->A5");
+      // don't clear screen here
+      break;
+    case 4:
+      // Show the time
+      lcd.setCursor(0, 0);
+      lcd.print("Usually on time.");
+      lcd.setCursor(0, 1);
+      lcd.print("Some of the time");
+      delay(stdDelay);
+      lcd.clear();
+      break;
+    case 5:
+      // How long until next Katie birthday
+      lcd.setCursor(0, 0);
+      lcd.print("Time we wait for");
+      lcd.setCursor(0, 1);
+      lcd.print("KB's birthdate?");
+  
+      for (byte num = 0; num < 5; num++) {
+        lcd.setCursor(14, 1);
+        lcd.print(' ');
+        delay(stdFlash);
+        lcd.setCursor(14, 1);
+        lcd.print('?');
+        delay(stdFlash);
+      }
+      lcd.clear();
+      break;
+    default:
+      lcd.setCursor(0, 0);
+      lcd.print("Bug displayMode:");
+      lcd.setCursor(0, 1);
+      lcd.print(displayMode);
+      break;
+  }
+
+}
+
 void setup() {
 
   Serial.begin(115200);
@@ -281,8 +385,8 @@ void setup() {
 
   // Fill screen blue. Not a required step, this just shows that we're
   // successfully communicating with the screen.
-//  tft.fillScreen(HX8357_BLUE);
-  tft.fillScreen(0);
+  tft.fillScreen(HX8357_BLUE);
+//  tft.fillScreen(0);
 
   // Load full-screen BMP file 'cgkbresized.bmp' at position (0,0) (top left).
   // Notice the 'reader' object performs this, with 'tft' as an argument.
@@ -304,110 +408,34 @@ void setup() {
 //  }
 
 
-
   // Merry Christmas!
   
   // initial hint
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("A tiny button...");
+  lcd.print("Corner button...");
   lcd.setCursor(0, 1);
-  lcd.print("new mode summons");
-  delay(stdDelay);
-  lcd.clear();
+  lcd.print("New mode summons");
+  // button press prompts next message
 
-  now = rtc.now();
-  byte caseSecond = now.second();
-
-  // manually force a second value for testing
-//  caseSecond = 3;
-
-  if (caseSecond % 5 == 0) {
-    // How long until next Katie birthday
-    displayMode = 5;
-    lcd.setCursor(0, 0);
-    lcd.print("Time we wait for");
-    lcd.setCursor(0, 1);
-    lcd.print("KB's birthdate?");
-
-    for (byte num = 0; num < 5; num++) {
-      lcd.setCursor(14, 1);
-      lcd.print(' ');
-      delay(stdFlash);
-      lcd.setCursor(14, 1);
-      lcd.print('?');
-      delay(stdFlash);
-    }
-    lcd.clear();
-  } else if (caseSecond % 4 == 0) {
-    // Show the time
-    displayMode = 4;
-    lcd.setCursor(0, 0);
-    lcd.print("Usually on time.");
-    lcd.setCursor(0, 1);
-    lcd.print("Some of the time");
-    delay(stdDelay);
-    lcd.clear();
-  } else if (caseSecond % 3 == 0) {
-    // Pin instructions for how long alive
-    lcd.setCursor(0, 0);
-    lcd.print("How long alive?");
-    lcd.setCursor(0, 1);
-    lcd.print("Connect GND<->A5");
-    // don't clear screen here
-  } else if (caseSecond % 2 == 0) {
-    // How long until next anniversary
-    displayMode = 2;
-    lcd.setCursor(0, 0);
-    lcd.print("How long until");
-    lcd.setCursor(0, 1);
-    lcd.print("our anniversary?");
-
-    for (byte num = 0; num < 5; num++) {
-      lcd.setCursor(15, 1);
-      lcd.print(' ');
-      delay(stdFlash);
-      lcd.setCursor(15, 1);
-      lcd.print('?');
-      delay(stdFlash);
-    }
-    lcd.clear();
-  } else if (caseSecond % 1 == 0) {
-    // How long has it been setup
-    displayMode = 1;
-    lcd.setCursor(0, 0);
-    lcd.print("How long has it");
-    lcd.setCursor(0, 1);
-    lcd.print("been? ");
-    lcd.print(hoot.year(), DEC);
-    lcd.print('/');
-    lcd.print(hoot.month(), DEC);
-    lcd.print('/');
-    lcd.print(hoot.day(), DEC);
-  
-    for (byte num = 0; num < 5; num++) {
-      lcd.setCursor(4, 1);
-      lcd.print(' ');
-      delay(stdFlash);
-      lcd.setCursor(4, 1);
-      lcd.print('?');
-      delay(stdFlash);
-    }
-    lcd.clear();
-  } else {
-    lcd.setCursor(0, 0);
-    lcd.print("Setup bug");
-    lcd.setCursor(0, 1);
-    lcd.print(caseSecond);
-  }
 
 }
 
 void loop() {
 
-  Serial.print(F("A7 an is: "));
-  Serial.println(analogRead(A7));
-  //buttonPoll = analogRead(button) < 500 ? 1 : 0;
+  // A6 and A7 are analog inputs only, cannot use digitalRead here
+  // board has 10k pullup to side of button wired to A7, other side wired to ground
+  // button press pulls A7 down to ground (typically 0, 1, or 2 analogRead value)
+  if (analogRead(A7) < 10) {
+    // don't react to a button that is still being held down from previous press
+    if (!buttonDown) {
+      buttonDown = true;
+      buttonPress();
+    }
+  } else {
+    // button not pressed, accept button input next loop
+    buttonDown = false;
+  }
 
 //  for(byte r=0; r<4; r++) { // For each of 4 rotations...
 //    tft.setRotation(r);    // Set rotation
@@ -443,29 +471,37 @@ void loop() {
 //  Serial.println(currentMillis - startMillis);  //the period which has elapsed
 //  startMillis = currentMillis;  //IMPORTANT to save the time
  
-  // Clear screen before going into loop
+  // Clear screen before arriving in this loop
   // Doing it here at beginning of loop causes flashing
 
-  if (digitalRead(A5) == LOW) {
-    displayMode = 3;
-  }
-
   // update time on every loop
+  // technically unnecessary, and waste of time, for displayMode == 0
   now = rtc.now();
 
-  if (displayMode == 5) {
-    displayTimeTokBdayCounts();
-  } else if (displayMode == 4) {
-    displayTime();
-  } else if (displayMode == 3) {
-    displayTimeAliveCounts();
-  } else if (displayMode == 2) {
-    displayTimeToAnniversaryCounts();
-  } else if (displayMode == 1) {
-    displayTimeTogetherCounts();
-  } else {
-    // No displayMode set (yet), so do nothing
-    // waiting on e.g. A5<->GND
+  switch (displayMode) {
+    case 0:
+      // initial startup, do nothing until button pressed, and don't delay
+      return;
+    case 1:
+      displayTimeTogetherCounts();
+      break;
+    case 2:
+      displayTimeToAnniversaryCounts();
+      break;
+    case 3:
+      if (digitalRead(A5) == LOW) {
+        Serial.println("A5 low");
+        displayTimeAliveCounts();
+      } else {
+        // don't wait for normal delay
+        return;
+      }
+    case 4:
+      displayTime();
+      break;
+    case 5:
+      displayTimeTokBdayCounts();
+      break;
   }
 
   // use millis() to find out exactly how long the loop cycle time is, try to sync to LED 1 Hz flash
