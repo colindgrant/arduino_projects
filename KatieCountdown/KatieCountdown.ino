@@ -6,6 +6,8 @@
 #include <Adafruit_HX8357.h>      // Hardware-specific library
 #include <SdFat.h>                // SD card & FAT filesystem library
 #include <Adafruit_ImageReader.h> // Image-reading functions
+#include <Adafruit_STMPE610.h>
+
 
 
 // TFT/SD pins over and above default SPI pins for MOSI, MISO, CLK
@@ -23,6 +25,11 @@ int32_t                width  = 0, // BMP image dimensions (Adafruit ex used int
 LiquidCrystal lcd(9, 8, 6, 5, 4, 3);
 
 RTC_DS1307 rtc;
+
+// Option #1 - uses I2C, connect to hardware I2C port only!
+// SCL to I2C clock (#A5 on Uno) and SDA to I2C data (#A4 on Uno)
+// tie MODE to GND and POWER CYCLE (there is no reset pin)
+Adafruit_STMPE610 touch = Adafruit_STMPE610();
 
 const byte numDisplayModes = 5;
 
@@ -340,6 +347,13 @@ void setup() {
   Serial.begin(115200);
   Serial.println(F("Serial started"));
 
+
+  if (! touch.begin()) {
+    Serial.println("STMPE not found!");
+    while(1);
+  }
+  Serial.println("Touch screen started");
+
 //  startMillis = millis();
 
   ImageReturnCode stat; // Status from image-reading functions
@@ -422,6 +436,26 @@ void setup() {
 }
 
 void loop() {
+
+  // touch test
+  uint16_t x, y;
+  uint8_t z;
+  if (touch.touched()) {
+    // read x & y & z;
+    while (! touch.bufferEmpty()) {
+      Serial.print(touch.bufferSize());
+      touch.readData(&x, &y, &z);
+      Serial.print("->("); 
+      Serial.print(x); Serial.print(", "); 
+      Serial.print(y); Serial.print(", "); 
+      Serial.print(z);
+      Serial.println(")");
+    }
+    touch.writeRegister8(STMPE_INT_STA, 0xFF); // reset all ints, in this example unneeded depending in use
+  }
+  delay(10);
+  // for touch example to work, loop needs to repeat quickly, not wait 1 second as it is currenlty configured
+  return;
 
   // A6 and A7 are analog inputs only, cannot use digitalRead here
   // board has 10k pullup to side of button wired to A7, other side wired to ground
