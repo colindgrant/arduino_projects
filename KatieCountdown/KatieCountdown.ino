@@ -117,14 +117,29 @@ void displayDateTimeObject(DateTime dt) {
   lcd.setCursor(0, 0);
   lcd.print(dt.year(), DEC);
   lcd.print('/');
+  if (dt.month() < 10) {
+    lcd.print('0');
+  }
   lcd.print(dt.month(), DEC);
   lcd.print('/');
+  if (dt.day() < 10) {
+    lcd.print('0');
+  }
   lcd.print(dt.day(), DEC);
   lcd.setCursor(0, 1);
+  if (dt.hour() < 10) {
+    lcd.print('0');
+  }
   lcd.print(dt.hour(), DEC);
   lcd.print(':');
+  if (dt.minute() < 10) {
+    lcd.print('0');
+  }
   lcd.print(dt.minute(), DEC);
   lcd.print(':');
+  if (dt.second() < 10) {
+    lcd.print('0');
+  }
   lcd.print(dt.second(), DEC);
 
 }
@@ -134,11 +149,20 @@ void displayTimeSpanObject(TimeSpan ts) {
   lcd.setCursor(0, 0);
   lcd.print(ts.days(), DEC);
   lcd.print(" days ");
+  if (ts.hours() < 10) {
+    lcd.print('0');
+  }
   lcd.print(ts.hours(), DEC);
   lcd.print(" hrs ");
   lcd.setCursor(0, 1);
+  if (ts.minutes() < 10) {
+    lcd.print('0');
+  }
   lcd.print(ts.minutes(), DEC);
   lcd.print(" mins ");
+  if (ts.seconds() < 10) {
+    lcd.print('0');
+  }
   lcd.print(ts.seconds(), DEC);
   lcd.print(" secs   ");
 
@@ -184,10 +208,19 @@ void displayTime() {
   lcd.setCursor(0, 0);
   lcd.print("How am I doing?");
   lcd.setCursor(0, 1);
+  if (now.hour() < 10) {
+    lcd.print('0');
+  }
   lcd.print(now.hour(), DEC);
   lcd.print(':');
+  if (now.minute() < 10) {
+    lcd.print('0');
+  }
   lcd.print(now.minute(), DEC);
   lcd.print(':');
+  if (now.second() < 10) {
+    lcd.print('0');
+  }
   lcd.print(now.second(), DEC);
 
 }
