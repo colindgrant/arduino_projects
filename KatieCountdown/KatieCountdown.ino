@@ -1,8 +1,8 @@
-#include <Wire.h>
-#include <LiquidCrystal.h>
-#include <RTClib.h>
+#include <Wire.h>                 // I2C library
+#include <LiquidCrystal.h>        // LCD display library, non-I2C
+#include <RTClib.h>               // DS1307 Real Time Clock library
 #include <Adafruit_GFX.h>         // Core graphics library
-#include <Adafruit_HX8357.h>      // Hardware-specific library
+#include <Adafruit_HX8357.h>      // Hardware-specific TFT library
 #include <SdFat.h>                // SD card & FAT filesystem library
 #include <Adafruit_ImageReader.h> // Image-reading functions
 #include <Adafruit_STMPE610.h>    // Touchscreen controller
@@ -111,7 +111,7 @@ void writeRTC(byte location, byte data)
   Wire.endTransmission();
 }
 
-void displayDateTimeObject(DateTime dt){
+void displayDateTimeObject(DateTime dt) {
 
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -126,10 +126,38 @@ void displayDateTimeObject(DateTime dt){
   lcd.print(dt.minute(), DEC);
   lcd.print(':');
   lcd.print(dt.second(), DEC);
-  
+
 }
 
-DateTime convertToNextDate(DateTime dt){
+void displayTimeSpanObject(TimeSpan ts) {
+
+  lcd.setCursor(0, 0);
+  lcd.print(ts.days(), DEC);
+  lcd.print(" days ");
+  lcd.print(ts.hours(), DEC);
+  lcd.print(" hrs ");
+  lcd.setCursor(0, 1);
+  lcd.print(ts.minutes(), DEC);
+  lcd.print(" mins ");
+  lcd.print(ts.seconds(), DEC);
+  lcd.print(" secs   ");
+
+}
+
+void displayFlashingQuestionMark(byte pos, byte line) {
+
+  for (byte num = 0; num < 5; num++) {
+    lcd.setCursor(pos, line);
+    lcd.print(' ');
+    delay(stdFlash);
+    lcd.setCursor(pos, line);
+    lcd.print('?');
+    delay(stdFlash);
+  }
+
+}
+
+DateTime convertToNextDate(DateTime dt) {
 
   DateTime thisYear (now.year(), dt.month(), dt.day());
 
@@ -140,30 +168,18 @@ DateTime convertToNextDate(DateTime dt){
   } else {
     return thisYear;
   }
-  
+
 }
 
-void displayTimeTokBdayCounts()
-{
+void displayTimeTokBdayCounts() {
 
   DateTime nextKatieBday = convertToNextDate(katieBday);
   TimeSpan untilNextKatieBday = nextKatieBday - now;
+  displayTimeSpanObject(untilNextKatieBday);
 
-  lcd.setCursor(0, 0);
-  lcd.print(untilNextKatieBday.days(), DEC);
-  lcd.print(" days ");
-  lcd.print(untilNextKatieBday.hours(), DEC);
-  lcd.print(" hrs ");
-  lcd.setCursor(0, 1);
-  lcd.print(untilNextKatieBday.minutes(), DEC);
-  lcd.print(" mins ");
-  lcd.print(untilNextKatieBday.seconds(), DEC);
-  lcd.print(" secs   ");
-  
 }
 
-void displayTime()
-{
+void displayTime() {
 
   lcd.setCursor(0, 0);
   lcd.print("How am I doing?");
@@ -176,67 +192,32 @@ void displayTime()
 
 }
 
-void displayTimeAliveCounts()
-{
+void displayTimeAliveCounts() {
 
   // extraDays is the number of days between actual Katie Birthday (1983) and katieBday (2000)
   TimeSpan alive = now - katieBday + TimeSpan(extraDays, 0, 0, 0);
+  displayTimeSpanObject(alive);
 
-  lcd.setCursor(0, 0);
-  lcd.print(alive.days(), DEC);
-  lcd.print(" days ");
-  lcd.print(alive.hours(), DEC);
-  lcd.print(" hrs ");
-  lcd.setCursor(0, 1);
-  lcd.print(alive.minutes(), DEC);
-  lcd.print(" mins ");
-  lcd.print(alive.seconds(), DEC);
-  lcd.print(" secs   ");
-  
 }
 
-void displayTimeToAnniversaryCounts()
-{
+void displayTimeToAnniversaryCounts() {
 
   DateTime nextAnniversary = convertToNextDate(hoot);
   TimeSpan untilNextAnniversary = nextAnniversary - now;
+  displayTimeSpanObject(untilNextAnniversary);
 
-  lcd.setCursor(0, 0);
-  lcd.print(untilNextAnniversary.days(), DEC);
-  lcd.print(" days ");
-  lcd.print(untilNextAnniversary.hours(), DEC);
-  lcd.print(" hrs ");
-  lcd.setCursor(0, 1);
-  lcd.print(untilNextAnniversary.minutes(), DEC);
-  lcd.print(" mins ");
-  lcd.print(untilNextAnniversary.seconds(), DEC);
-  lcd.print(" secs   ");
-  
 }
 
-void displayTimeTogetherCounts()
-{
+void displayTimeTogetherCounts() {
 
   TimeSpan together = now - hoot;
+  displayTimeSpanObject(together);
 
-  lcd.setCursor(0, 0);
-  lcd.print(together.days(), DEC);
-  lcd.print(" days ");
-  lcd.print(together.hours(), DEC);
-  lcd.print(" hrs ");
-  lcd.setCursor(0, 1);
-  lcd.print(together.minutes(), DEC);
-  lcd.print(" mins ");
-  lcd.print(together.seconds(), DEC);
-  lcd.print(" secs   ");
-  
 }
 
-void buttonPress()
-{
+void buttonPress() {
 
-  if (displayMode == numDisplayModes)
-  {
+  if (displayMode == numDisplayModes) {
     displayMode = 1;
   } else {
     displayMode++;
@@ -257,15 +238,7 @@ void buttonPress()
       lcd.print(hoot.month(), DEC);
       lcd.print('/');
       lcd.print(hoot.day(), DEC);
-    
-      for (byte num = 0; num < 5; num++) {
-        lcd.setCursor(4, 1);
-        lcd.print(' ');
-        delay(stdFlash);
-        lcd.setCursor(4, 1);
-        lcd.print('?');
-        delay(stdFlash);
-      }
+      displayFlashingQuestionMark(4, 1);
       lcd.clear();
       break;
     case 2:
@@ -274,15 +247,7 @@ void buttonPress()
       lcd.print("How long until");
       lcd.setCursor(0, 1);
       lcd.print("our anniversary?");
-  
-      for (byte num = 0; num < 5; num++) {
-        lcd.setCursor(15, 1);
-        lcd.print(' ');
-        delay(stdFlash);
-        lcd.setCursor(15, 1);
-        lcd.print('?');
-        delay(stdFlash);
-      }
+      displayFlashingQuestionMark(15, 1);
       lcd.clear();
       break;
     case 3:
@@ -308,15 +273,7 @@ void buttonPress()
       lcd.print("Time we wait for");
       lcd.setCursor(0, 1);
       lcd.print("KB's birthdate?");
-  
-      for (byte num = 0; num < 5; num++) {
-        lcd.setCursor(14, 1);
-        lcd.print(' ');
-        delay(stdFlash);
-        lcd.setCursor(14, 1);
-        lcd.print('?');
-        delay(stdFlash);
-      }
+      displayFlashingQuestionMark(14, 1);
       lcd.clear();
       break;
     default:
@@ -336,12 +293,12 @@ void setup() {
 
   if (! touch.begin()) {
     Serial.println("STMPE not found!");
-    while(1);
+    while (1);
   }
   Serial.println("Touch screen started");
 
   ImageReturnCode stat; // Status from image-reading functions
-  
+
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
 
@@ -351,15 +308,15 @@ void setup() {
     while (1);
   }
 
-//  initializeKatieCountdown();
+  //  initializeKatieCountdown();
 
   // welcome
   lcd.setCursor(0, 0);
   lcd.print("To Katie from CG");
   lcd.setCursor(0, 1);
   lcd.print("Heading for 2020");
-//  delay(stdDelay); The TFT setup is plenty of delay
-//  lcd.clear();
+  //  delay(stdDelay); The TFT setup is plenty of delay
+  //  lcd.clear();
 
 
 
@@ -371,9 +328,9 @@ void setup() {
   // BE INITIALIZED before using any of the image reader functions!
   Serial.print(F("Initializing SD filesystem..."));
 
-  if(!sdfs.begin(SD_CS, SD_SCK_MHZ(25))) { // ESP32 requires 25 MHz limit
+  if (!sdfs.begin(SD_CS, SD_SCK_MHZ(25))) { // ESP32 requires 25 MHz limit
     Serial.println(F("SD begin() failed"));
-    for(;;); // Fatal error, do not continue
+    for (;;); // Fatal error, do not continue
   }
 
   Serial.println(F("OK!"));
@@ -381,7 +338,7 @@ void setup() {
   // Fill screen blue. Not a required step, this just shows that we're
   // successfully communicating with the screen.
   tft.fillScreen(HX8357_BLUE);
-//  tft.fillScreen(0);
+  //  tft.fillScreen(0);
 
   // Load full-screen BMP file 'cgkbresized.bmp' at position (0,0) (top left).
   // Notice the 'reader' object performs this, with 'tft' as an argument.
@@ -413,9 +370,9 @@ void loop() {
     while (! touch.bufferEmpty()) {
       Serial.print(touch.bufferSize());
       touch.readData(&x, &y, &z);
-      Serial.print("->("); 
-      Serial.print(x); Serial.print(", "); 
-      Serial.print(y); Serial.print(", "); 
+      Serial.print("->(");
+      Serial.print(x); Serial.print(", ");
+      Serial.print(y); Serial.print(", ");
       Serial.print(z);
       Serial.println(")");
     }
@@ -438,7 +395,7 @@ void loop() {
     // button not pressed, accept button input next loop
     buttonDown = false;
   }
- 
+
   // Clear screen before arriving in this loop
   // Doing it here at beginning of loop causes flashing
 
@@ -471,5 +428,5 @@ void loop() {
       displayTimeTokBdayCounts();
       break;
   }
-  
+
 }
