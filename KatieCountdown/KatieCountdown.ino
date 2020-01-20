@@ -1,59 +1,46 @@
 #include <Wire.h>
 #include <LiquidCrystal.h>
 #include <RTClib.h>
-
 #include <Adafruit_GFX.h>         // Core graphics library
 #include <Adafruit_HX8357.h>      // Hardware-specific library
 #include <SdFat.h>                // SD card & FAT filesystem library
 #include <Adafruit_ImageReader.h> // Image-reading functions
-#include <Adafruit_STMPE610.h>
-
+#include <Adafruit_STMPE610.h>    // Touchscreen controller
 
 
 // TFT/SD pins over and above default SPI pins for MOSI, MISO, CLK
-#define TFT_CS   10
-#define TFT_DC   A0
-#define SD_CS    A3 // CCS on board
+#define TFT_CS   10 // Marked CS on board, Trinket pinout calls pin 10 SPI 'SS' 
+#define TFT_DC   A0 // Marked D/C on board
+#define SD_CS    A3 // Marked CCS on board
 
-SdFat                SD;         // SD card filesystem
-Adafruit_ImageReader reader(SD); // Image-reader object, pass in SD filesys
+// Initialize device objects
+SdFat                 sdfs;         // SD card filesystem
+Adafruit_ImageReader  reader(sdfs); // Image-reader object, pass in SD filesys
+Adafruit_HX8357       tft(TFT_CS, TFT_DC);
+LiquidCrystal         lcd(9, 8, 6, 5, 4, 3);
+RTC_DS1307            rtc;
+Adafruit_STMPE610     touch;
 
-Adafruit_HX8357        tft    = Adafruit_HX8357(TFT_CS, TFT_DC);
-int32_t                width  = 0, // BMP image dimensions (Adafruit ex used int32_t here)
-                       height = 0;
-
-LiquidCrystal lcd(9, 8, 6, 5, 4, 3);
-
-RTC_DS1307 rtc;
-
-// Option #1 - uses I2C, connect to hardware I2C port only!
-// SCL to I2C clock (#A5 on Uno) and SDA to I2C data (#A4 on Uno)
-// tie MODE to GND and POWER CYCLE (there is no reset pin)
-Adafruit_STMPE610 touch = Adafruit_STMPE610();
-
+// Define constants
 const byte numDisplayModes = 5;
+//char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+const DateTime hoot (2011, 7, 16, 0, 0, 0);
+// this DataTime library doesn't work with years before 2000, so set it to 2000 and add the extra days manually
+// Days from 1/1/1983 to 1/1/2000 is 6210
+const DateTime katieBday (2000, 8, 17, 0, 0, 0);
+//DateTime colinBday (2000, 5, 3, 0, 0, 0);
+const int extraDays = 6210;
+const int stdDelay = 4000;
+const int stdFlash = stdDelay / 4;
 
+// Define global (non-constants)
+DateTime now;
 // Defines the heading-countdown combination of text shown on the screen
 // values are positive ints: 1, 2, 3, etc., button press increments the mode
 // loop does nothing with mode 0, so after setup, button press will increment to 1, and begin the interface
 byte displayMode = 0;
-
 bool buttonDown = false;
 
-//char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-
-DateTime hoot (2011, 7, 16, 0, 0, 0);
-
-// this DataTime library doesn't work with years before 2000, so set it to 2000 and add the extra days manually
-// Days from 1/1/1983 to 1/1/2000 is 6210
-DateTime katieBday (2000, 8, 17, 0, 0, 0);
-//DateTime colinBday (2000, 5, 3, 0, 0, 0);
-int extraDays = 6210;
-
-DateTime now;
-
-int stdDelay = 4000;
-int stdFlash = stdDelay / 4;
 
 //unsigned long startMillis;
 //unsigned long currentMillis;
@@ -347,14 +334,11 @@ void setup() {
   Serial.begin(115200);
   Serial.println(F("Serial started"));
 
-
   if (! touch.begin()) {
     Serial.println("STMPE not found!");
     while(1);
   }
   Serial.println("Touch screen started");
-
-//  startMillis = millis();
 
   ImageReturnCode stat; // Status from image-reading functions
   
@@ -368,9 +352,6 @@ void setup() {
   }
 
 //  initializeKatieCountdown();
-
-//  pinMode(LED_BUILTIN, OUTPUT);  // sets the digital pin 13 as output
-  pinMode(A5, INPUT_PULLUP);  // set pull-up on analog pin 5
 
   // welcome
   lcd.setCursor(0, 0);
@@ -390,7 +371,7 @@ void setup() {
   // BE INITIALIZED before using any of the image reader functions!
   Serial.print(F("Initializing SD filesystem..."));
 
-  if(!SD.begin(SD_CS, SD_SCK_MHZ(25))) { // ESP32 requires 25 MHz limit
+  if(!sdfs.begin(SD_CS, SD_SCK_MHZ(25))) { // ESP32 requires 25 MHz limit
     Serial.println(F("SD begin() failed"));
     for(;;); // Fatal error, do not continue
   }
@@ -410,20 +391,7 @@ void setup() {
   // with the ESP32 SD library seems to require it.)
   reader.printStatus(stat);   // How'd we do?
 
-//  // Query the dimensions of image 'parrot.bmp' WITHOUT loading to screen:
-//  Serial.print(F("Querying cgkbresized.bmp image size..."));
-//  stat = reader.bmpDimensions("/cgkbresized.bmp", &width, &height);
-//  reader.printStatus(stat);   // How'd we do?
-//  if(stat == IMAGE_SUCCESS) { // If it worked, print image size...
-//    Serial.print(F("Image dimensions: "));
-//    Serial.print(width);
-//    Serial.write('x');
-//    Serial.println(height);
-//  }
 
-
-  // Merry Christmas!
-  
   // initial hint
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -454,10 +422,10 @@ void loop() {
     touch.writeRegister8(STMPE_INT_STA, 0xFF); // reset all ints, in this example unneeded depending in use
   }
   delay(10);
-  // for touch example to work, loop needs to repeat quickly, not wait 1 second as it is currenlty configured
-  return;
 
-  // A6 and A7 are analog inputs only, cannot use digitalRead here
+
+  //  Check to see if button is down
+  // A6 and A7 are analog inputs only, cannot use digitalRead() here
   // board has 10k pullup to side of button wired to A7, other side wired to ground
   // button press pulls A7 down to ground (typically 0, 1, or 2 analogRead value)
   if (analogRead(A7) < 10) {
@@ -470,40 +438,6 @@ void loop() {
     // button not pressed, accept button input next loop
     buttonDown = false;
   }
-
-//  for(byte r=0; r<4; r++) { // For each of 4 rotations...
-//    tft.setRotation(r);    // Set rotation
-//    tft.fillScreen(0);     // and clear screen
-//
-//    // Load 4 copies of the 'parrot.bmp' image to the screen, some
-//    // partially off screen edges to demonstrate clipping. Globals
-//    // 'width' and 'height' were set by bmpDimensions() call in setup().
-//    for(byte i=0; i<4; i++) {
-//      reader.drawBMP("/cgkbresized.bmp", tft,
-//        (tft.width()  * i / 3) - (width  / 2),
-//        (tft.height() * i / 3) - (height / 2));
-//    }
-//
-//    delay(1000); // Pause 1 sec.
-//
-//    // Draw 50 Welsh dragon flags in random positions. This has no effect
-//    // on memory-constrained boards like the Arduino Uno, where the image
-//    // failed to load due to insufficient RAM, but it's NOT fatal.
-////    for(byte i=0; i<50; i++) {
-////      // Rather than reader.drawBMP() (which works from SD card),
-////      // a different function is used for RAM-resident images:
-////      img.draw(tft,                                    // Pass in tft object
-////        (int16_t)random(-img.width() , tft.width()) ,  // Horiz pos.
-////        (int16_t)random(-img.height(), tft.height())); // Vert pos
-////      // Reiterating a prior point: img.draw() does nothing and returns
-////      // if the image failed to load. It's unfortunate but not disastrous.
-////    }
-//
-//    delay(1000); // Pause 2 sec.
-//  }
-//  currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
-//  Serial.println(currentMillis - startMillis);  //the period which has elapsed
-//  startMillis = currentMillis;  //IMPORTANT to save the time
  
   // Clear screen before arriving in this loop
   // Doing it here at beginning of loop causes flashing
@@ -537,8 +471,5 @@ void loop() {
       displayTimeTokBdayCounts();
       break;
   }
-
-  // use millis() to find out exactly how long the loop cycle time is, try to sync to LED 1 Hz flash
-  delay (988);
   
 }
