@@ -324,6 +324,10 @@ void buttonPress() {
 
 void setup() {
 
+  ImageReturnCode stat; // Status from image-reading functions
+  SdFile file;
+  char sdFilename[13];
+
   Serial.begin(115200);
   Serial.println(F("Serial started"));
 
@@ -333,16 +337,16 @@ void setup() {
   }
   Serial.println("Touch screen started");
 
-  ImageReturnCode stat; // Status from image-reading functions
-
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
+  Serial.println("LCD started");
 
   if (! rtc.begin()) {
     lcd.setCursor(0, 0);
     lcd.print("Couldn't find RTC");
     while (1);
   }
+  Serial.println("RTC started");
 
   //  initializeKatieCountdown();
 
@@ -355,9 +359,13 @@ void setup() {
   //  lcd.clear();
 
 
-
   tft.begin();          // Initialize screen
   tft.setRotation(3);    // Set rotation
+
+  // Fill screen blue. Not a required step, this just shows that we're
+  // successfully communicating with the screen.
+  tft.fillScreen(HX8357_BLUE);
+  //  tft.fillScreen(0);
 
   // The Adafruit_ImageReader constructor call (above, before setup())
   // accepts an uninitialized SdFat or FatFileSystem object. This MUST
@@ -368,21 +376,45 @@ void setup() {
     Serial.println(F("SD begin() failed"));
     for (;;); // Fatal error, do not continue
   }
-
   Serial.println(F("OK!"));
+  
+  while (file.openNext(sdfs.vwd(), O_RDONLY)) {
 
-  // Fill screen blue. Not a required step, this just shows that we're
-  // successfully communicating with the screen.
-  tft.fillScreen(HX8357_BLUE);
-  //  tft.fillScreen(0);
+//    Serial.println("Current file is: ");
+//    file.printName(&Serial);
+//    Serial.println();
 
-  // Load full-screen BMP file 'cgkbresized.bmp' at position (0,0) (top left).
-  // Notice the 'reader' object performs this, with 'tft' as an argument.
-  Serial.print(F("Loading cgkbresized.bmp to screen..."));
-  stat = reader.drawBMP("/cgkbresized.bmp", tft, 0, 0);
-  // (Absolute path isn't necessary on most devices, but something
-  // with the ESP32 SD library seems to require it.)
-  reader.printStatus(stat);   // How'd we do?
+    // skip anything that isn't a file
+    if(!file.isFile()) {
+//      Serial.println(F("Not a file"));
+      file.close();
+      continue;
+    }
+
+    // skip if you can't read the filename
+    if(!file.getName(sdFilename, sizeof(sdFilename))) {
+//      Serial.print(F("Unable to read: "));
+//      Serial.println(sdFilename);
+      file.close();
+      continue;
+    }
+
+    if (!(strcmp(sdFilename + strlen(sdFilename) - 4, ".bmp") == 0)) {
+//      Serial.print(F("Skipping file that doesn't end with '.bmp': "));
+//      Serial.println(sdFilename);
+      file.close();
+      continue;
+    }
+
+    // Load full-screen BMP file 'cgkbresized.bmp' at position (0,0) (top left).
+    // Notice the 'reader' object performs this, with 'tft' as an argument.
+    Serial.print(F("Loading: "));
+    Serial.print(sdFilename);
+    Serial.print(F("..."));
+    stat = reader.drawBMP(sdFilename, tft, 0, 0);
+    reader.printStatus(stat);   // How'd we do?
+    file.close();
+  }
 
 
   // initial hint
