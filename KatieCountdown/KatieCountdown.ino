@@ -13,6 +13,9 @@
 #define TFT_DC   A0 // Marked D/C on board
 #define SD_CS    A3 // Marked CCS on board
 
+#define DEBUG true // flag to turn on/off debugging
+#define Serial if(DEBUG)Serial
+
 // Initialize device objects
 SdFat                 sdfs;         // SD card filesystem
 Adafruit_ImageReader  reader(sdfs); // Image-reader object, pass in SD filesys
