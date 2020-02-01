@@ -13,7 +13,7 @@
 #define TFT_DC   A0 // Marked D/C on board
 #define SD_CS    A3 // Marked CCS on board
 
-#define DEBUG true // flag to turn on/off debugging
+#define DEBUG false // flag to turn on/off debugging
 #define Serial if(DEBUG)Serial
 
 // Initialize device objects
@@ -43,14 +43,11 @@ DateTime now;
 // loop does nothing with mode 0, so after setup, button press will increment to 1, and begin the interface
 byte displayMode = 0;
 bool buttonDown = false;
-
-
-//unsigned long startMillis;
-//unsigned long currentMillis;
+unsigned long previousMillis = 0;
+int pictureDelay = 0;
 
 // Things that shouldn't have to be done every boot
-void initializeKatieCountdown()
-{
+void initializeKatieCountdown() {
   // Set the RTC to the date & time this sketch was compiled
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
 
@@ -69,8 +66,7 @@ void initializeKatieCountdown()
   delay(stdDelay);
 }
 
-void iic_discover()
-{
+void iic_discover() {
   byte error, address, nDevices;
   Serial.println("Scanning...");
   nDevices = 0;
@@ -105,9 +101,7 @@ void iic_discover()
   delay(stdDelay); // wait 5 seconds for next scan
 }
 
-void writeRTC(byte location, byte data)
-// writes data to location
-{
+void writeRTC(byte location, byte data) {
   Wire.beginTransmission(0x68);
   Wire.write(location);
   Wire.write(data);
@@ -287,12 +281,13 @@ void buttonPress() {
       lcd.clear();
       break;
     case 3:
-      // Pin instructions for how long alive
+      // How long alive
       lcd.setCursor(0, 0);
-      lcd.print("How long alive?");
+      lcd.print("A world w/Kate:");
       lcd.setCursor(0, 1);
-      lcd.print("Connect GND<->A5");
-      // don't clear screen here
+      lcd.print("How many a-date?");
+      displayFlashingQuestionMark(15, 1);
+      lcd.clear();
       break;
     case 4:
       // Show the time
@@ -322,88 +317,42 @@ void buttonPress() {
 
 }
 
-void setup() {
+bool updateImage() {
 
   ImageReturnCode stat; // Status from image-reading functions
   SdFile file;
   char sdFilename[13];
-
-  Serial.begin(115200);
-  Serial.println(F("Serial started"));
-
-  if (! touch.begin()) {
-    Serial.println("STMPE not found!");
-    while (1);
-  }
-  Serial.println("Touch screen started");
-
-  // set up the LCD's number of columns and rows:
-  lcd.begin(16, 2);
-  Serial.println("LCD started");
-
-  if (! rtc.begin()) {
-    lcd.setCursor(0, 0);
-    lcd.print("Couldn't find RTC");
-    while (1);
-  }
-  Serial.println("RTC started");
-
-  //  initializeKatieCountdown();
-
-  // welcome
-  lcd.setCursor(0, 0);
-  lcd.print("To Katie from CG");
-  lcd.setCursor(0, 1);
-  lcd.print("Heading for 2020");
-  //  delay(stdDelay); The TFT setup is plenty of delay
-  //  lcd.clear();
+  pictureDelay = 0; // so that this will run immediately if there's a failure
 
 
-  tft.begin();          // Initialize screen
-  tft.setRotation(3);    // Set rotation
+  // Read next file from the SD, displaying them on the TFT
+  if (file.openNext(sdfs.vwd(), O_RDONLY)) {
 
-  // Fill screen blue. Not a required step, this just shows that we're
-  // successfully communicating with the screen.
-  tft.fillScreen(HX8357_BLUE);
-  //  tft.fillScreen(0);
-
-  // The Adafruit_ImageReader constructor call (above, before setup())
-  // accepts an uninitialized SdFat or FatFileSystem object. This MUST
-  // BE INITIALIZED before using any of the image reader functions!
-  Serial.print(F("Initializing SD filesystem..."));
-
-  if (!sdfs.begin(SD_CS, SD_SCK_MHZ(25))) { // ESP32 requires 25 MHz limit
-    Serial.println(F("SD begin() failed"));
-    for (;;); // Fatal error, do not continue
-  }
-  Serial.println(F("OK!"));
-  
-  while (file.openNext(sdfs.vwd(), O_RDONLY)) {
-
-//    Serial.println("Current file is: ");
-//    file.printName(&Serial);
-//    Serial.println();
+    // Doesn't work with DEBUG Serial macro
+    //    Serial.println("Current file is: ");
+    //    file.printName(&Serial);
+    //    Serial.println();
 
     // skip anything that isn't a file
-    if(!file.isFile()) {
-//      Serial.println(F("Not a file"));
+    if (!file.isFile()) {
+      Serial.println(F("Not a file"));
       file.close();
-      continue;
+      return 0;
     }
 
     // skip if you can't read the filename
-    if(!file.getName(sdFilename, sizeof(sdFilename))) {
-//      Serial.print(F("Unable to read: "));
-//      Serial.println(sdFilename);
+    if (!file.getName(sdFilename, sizeof(sdFilename))) {
+      Serial.print(F("Unable to read: "));
+      Serial.println(sdFilename);
       file.close();
-      continue;
+      return 0;
     }
 
     if (!(strcmp(sdFilename + strlen(sdFilename) - 4, ".bmp") == 0)) {
-//      Serial.print(F("Skipping file that doesn't end with '.bmp': "));
-//      Serial.println(sdFilename);
+      Serial.print(F("Skipping file that doesn't end with '.bmp': "));
+      Serial.println(sdFilename);
       file.close();
-      continue;
+      return 0;
     }
 
     // Load full-screen BMP file 'cgkbresized.bmp' at position (0,0) (top left).
@@ -411,11 +360,76 @@ void setup() {
     Serial.print(F("Loading: "));
     Serial.print(sdFilename);
     Serial.print(F("..."));
+    tft.fillScreen(0);
     stat = reader.drawBMP(sdFilename, tft, 0, 0);
     reader.printStatus(stat);   // How'd we do?
     file.close();
+    pictureDelay = 15000;
+    return 1; // success until I can use the value from stat instead
+  } else {
+    Serial.println(F("Couldn't openNext(), rewinding..."));
+    sdfs.vwd()->rewind();
+    return 0; // cause this function to run again
   }
 
+}
+
+void setup() {
+
+  Serial.begin(115200);
+  Serial.println(F("Serial started"));
+
+  // 4(?) bit directly wired
+  // set up the LCD's number of columns and rows:
+  lcd.begin(16, 2);
+  Serial.println("LCD started");
+
+  // I2C
+  if (! touch.begin()) {
+    Serial.println("STMPE not found!");
+    while (1);
+  }
+  Serial.println("Touch screen started");
+
+  // I2C
+  if (! rtc.begin()) {
+    lcd.setCursor(0, 0);
+    lcd.print("Couldn't find RTC");
+    while (1);
+  }
+  Serial.println("RTC started");
+
+  // Welcome message on screen while SPI devices start up
+  lcd.setCursor(0, 0);
+  lcd.print("To Katie from CG");
+  lcd.setCursor(0, 1);
+  lcd.print("Heading for 2020");
+
+  // SPI
+  // The SD filesystem seems to start more reliably when it's done before the TFT
+  //
+  // The Adafruit_ImageReader constructor call (above, before setup())
+  // accepts an uninitialized SdFat or FatFileSystem object. This MUST
+  // BE INITIALIZED before using any of the image reader functions!
+  Serial.print(F("Initializing SD filesystem..."));
+  if (!sdfs.begin(SD_CS, SD_SCK_MHZ(25))) { // ESP32 requires 25 MHz limit
+    Serial.println(F("SD begin() failed"));
+    for (;;); // Fatal error, do not continue
+  }
+  Serial.println(F("OK!"));
+
+
+  // SPI
+  Serial.print(F("Starting TFT..."));
+  tft.begin();          // Initialize screen
+  tft.setRotation(3);    // Set rotation
+  Serial.println(F("OK!"));
+  // Fill screen blue. Not a required step, this just shows that we're
+  // successfully communicating with the screen.
+  //  tft.fillScreen(0);
+  //  tft.fillScreen(HX8357_BLUE);
+  previousMillis = millis(); // start image display timer
+  //  reader.drawBMP("/aabeach.bmp", tft, 0, 0); //force a starting picture
 
   // initial hint
   lcd.clear();
@@ -430,24 +444,12 @@ void setup() {
 
 void loop() {
 
-  // touch test
-  uint16_t x, y;
-  uint8_t z;
-  if (touch.touched()) {
-    // read x & y & z;
-    while (! touch.bufferEmpty()) {
-      Serial.print(touch.bufferSize());
-      touch.readData(&x, &y, &z);
-      Serial.print("->(");
-      Serial.print(x); Serial.print(", ");
-      Serial.print(y); Serial.print(", ");
-      Serial.print(z);
-      Serial.println(")");
-    }
-    touch.writeRegister8(STMPE_INT_STA, 0xFF); // reset all ints, in this example unneeded depending in use
-  }
-  delay(10);
+  unsigned long currentMillis = millis();
 
+  if (touch.touched() || currentMillis - previousMillis >= pictureDelay) {
+    updateImage();
+    previousMillis = currentMillis;
+  }
 
   //  Check to see if button is down
   // A6 and A7 are analog inputs only, cannot use digitalRead() here
@@ -482,13 +484,8 @@ void loop() {
       displayTimeToAnniversaryCounts();
       break;
     case 3:
-      if (digitalRead(A5) == LOW) {
-        Serial.println("A5 low");
-        displayTimeAliveCounts();
-      } else {
-        // don't wait for normal delay
-        return;
-      }
+      displayTimeAliveCounts();
+      break;
     case 4:
       displayTime();
       break;
