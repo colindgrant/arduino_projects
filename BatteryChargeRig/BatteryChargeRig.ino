@@ -17,19 +17,7 @@
 #include <Adafruit_ADS1015.h>   // Adafruit's ADC breakout as voltage monitor
 
 
-//#define SERIALON
-
-// Define all 4 INA219 I2C addresses (not all INA219 physical modules), put them in an array
-Adafruit_INA219 meters[] = {Adafruit_INA219(0x40), Adafruit_INA219(0x41), Adafruit_INA219(0x44), Adafruit_INA219(0x45)};
-
-// ADC used as voltage monitor, I2C address 0x48 HEX, 72 DEC
-Adafruit_ADS1015 ads;
-
-//  The size will always be 4, so just set it to save calculating it
-uint8_t numMeters = 4;
-
-uint8_t numBatteryModules = 4;
-uint8_t currentBatteryModule = 0; // start here [0,1,2] = 3 modules
+// ********** Device objects **********
 
 /* The I2C 20x4 LCD address is 0x27 by default. Pulling down A0, A1, A2 gives lower addresses:
   A0 A1 A2 HEX
@@ -50,248 +38,131 @@ uint8_t currentBatteryModule = 0; // start here [0,1,2] = 3 modules
 */
 LiquidCrystal_I2C screens[] = {LiquidCrystal_I2C(0x27, 20, 4), LiquidCrystal_I2C(0x26, 20, 4)};
 
+// Define all 4 INA219 I2C addresses (not all INA219 physical modules), put them in an array
+Adafruit_INA219 meters[] = {Adafruit_INA219(0x40), Adafruit_INA219(0x41), Adafruit_INA219(0x44), Adafruit_INA219(0x45)};
+
+// ADC used as voltage monitor, I2C address 0x48 HEX, 72 DEC
+Adafruit_ADS1015 ads;
+
+
+// ********** Global Constants **********
+
+// The I2C address of the I2C multiplexer
 #define TCAADDR 0x70
 
-void tcaselect(uint8_t i) {
-#ifdef SERIALON
-  Serial.print("Selecting multiplexer port: ");
-  Serial.print(i);
-  Serial.print("...");
-#endif
+// Number of devices (and thus their objects) are fixed, so just define them
+// for later iterating without needing to calculate them from an array size
+const uint8_t numMeters = 4;
+const uint8_t numScreens = 2;
+const uint8_t numBatteryModules = 4;
 
+
+// ********** Global Variables **********
+
+// Used to iterate when the loop() repeats
+// E.g. 3 modules have indexes [0,1,2], start at index 0
+uint8_t currentBatteryModule = 0;
+
+
+// ********** Functions **********
+
+void tcaselect(uint8_t i) {
   if (i > 7) return;
 
   TinyWireM.beginTransmission(TCAADDR);
   TinyWireM.write(1 << i);
   TinyWireM.endTransmission();
-}
-
-
-void iic_discover()
-{
-#ifdef SERIALON
-  byte error, address, nDevices;
-  Serial.println("Scanning...");
-  nDevices = 0;
-  for (address = 1; address < 127; address++ )
-  {
-    // The i2c_scanner uses the return value of
-    // the Write.endTransmisstion to see if
-    // a device did acknowledge to the address.
-    TinyWireM.beginTransmission(address);
-    error = TinyWireM.endTransmission();
-    if (error == 0)
-    {
-      Serial.print("I2C device found at address 0x");
-      if (address < 16)
-        Serial.print("0");
-      Serial.print(address, HEX);
-      Serial.println(" !");
-      nDevices++;
-    }
-    else if (error == 4)
-    {
-      Serial.print("Unknow error at address 0x");
-      if (address < 16)
-        Serial.print("0");
-      Serial.println(address, HEX);
-    }
-  }
-  if (nDevices == 0)
-    Serial.println("No I2C devices found\n");
-  else
-    Serial.println("done\n");
-  delay(5000); // wait 5 seconds for next scan
-#endif
+  delay(50); // just in case there is some switching time required
 }
 
 void setup(void)
 {
-
-#ifdef SERIALON
-  Serial.begin(115200);
-  while (!Serial) {
-    // will pause Zero, Leonardo, etc until serial console opens
-    delay(1);
-  }
-  Serial.println("Hello!");
-#endif
-
-
-  // Setup I2C multiplexer on the 0 group of INA219 monitors
-  TinyWireM.begin();
-  uint8_t t = 0;
-  tcaselect(t);
-  delay(1000);
-
-  // needs serial monitor
-  //  iic_discover();
-
-  // Setup I2C LCD 0
-  screens[0].init();  //initialize the lcd
-  screens[0].backlight();  //open the backlight
-  screens[0].setCursor (0, 0);
-  screens[0].print("This is LCD screen ");
-  screens[0].print("0");
-
-  // Setup I2C LCD 1
-  screens[1].init();  //initialize the lcd
-  screens[1].backlight();  //open the backlight
-  screens[1].setCursor (0, 0);
-  screens[1].print("This is LCD screen ");
-  screens[1].print("1");
-
-  // Setup INA219s
-  uint32_t currentFrequency;
-
-  // Initialize the INA219.
-  // By default the initialization will use the largest range (32V, 2A).  However
-  // you can call a setCalibration function to change this range (see comments).
-  //ina219.begin();
-  // To use a slightly lower 32V, 1A range (higher precision on amps):
-  //ina219.setCalibration_32V_1A();
-  // Or to use a lower 16V, 400mA range (higher precision on volts and amps):
-  //ina219.setCalibration_16V_400mA();
-
+  uint8_t index; // common loop iterator
 
   // Initialize all 4 INA219 objects in memory
   // Once up and running, groups of 4 physical INA219 modules will be swapped
   // under these objects by the I2C multiplexer, but they won't know.
-  for (uint8_t meter = 0; meter < numMeters; meter++) {
-    // put init status on screen 0
-    screens[0].setCursor (0, meter);
-    screens[0].print("Initializing meter ");
-    screens[0].print(meter);
-
-    meters[meter].begin();
-    meters[meter].setCalibration_32V_1A();
+  //
+  // Note this also calls `TinyWireM.begin();` to initialize the I2C bus
+  for (index = 0; index < numMeters; index++) {
+    meters[index].begin();
+    meters[index].setCalibration_32V_1A();
   }
 
-
-  delay(1000);
-  //  Serial.println("Measuring voltage and current with INA219_A ...");
-  screens[0].clear();
-  screens[1].clear();
+  // Initialize the LCD screens
+  for (index = 0; index < numScreens; index++) {
+    screens[index].init();  //initialize the lcd
+    screens[index].backlight();  //open the backlight
+  }
 }
 
 void loop(void)
 {
 
-  //  char paddedCurrent[4];
-  short paddedCurrent;
-  byte currentScreen;
-  byte error;
+  uint8_t currentScreen;
+  uint8_t lineNumber; // 'top' LCD line for the currentBatteryModule
+  uint8_t error;
+  uint8_t index; // common loop iterator
+  float voltage;
 
-
-  //  Serial.println();
-  //  Serial.println("Fresh loop");
-  //
-  //  Serial.print("Battery Module: "); Serial.println(currentBatteryModule);
-
-  //  delay(1000);
-
-  // iterate the I2C multiplexer to select a battery module
+  // Iterate the I2C multiplexer to connect the master bus to the battery module for this round of the loop
   if (currentBatteryModule == numBatteryModules) {
-    //    Serial.println("Setting module to 0");
     currentBatteryModule = 0;
   }
-  //  Serial.print("Selecting bus: "); Serial.println(currentBatteryModule);
   tcaselect(currentBatteryModule);
-  //  Serial.print("Battery Module: "); Serial.println(currentBatteryModule);
 
+  // Set up where things will be printed for the currentBatteryModule
   currentScreen = (currentBatteryModule / 2); // take advantage of integer math, truncating the remainder
+  lineNumber = (currentBatteryModule % 2) * 2;
 
-  //  //  lcd.clear();
-  screens[currentScreen].setCursor (19, 0);
+  // Both batttery modules types show voltage, so print the 'v' character at the end of the voltage line
+  screens[currentScreen].setCursor (19, lineNumber);
   screens[currentScreen].print("v");
-  screens[currentScreen].setCursor (19, 1);
-  screens[currentScreen].print("i");
-  screens[currentScreen].setCursor (19, 2);
-  screens[currentScreen].print("v");
-  screens[currentScreen].setCursor (19, 3);
-  screens[currentScreen].print("i");
-
-  //  // identify battery module
-  //  screens[currentScreen].setCursor (0, (currentBatteryModule % 2) * 2);
-  //  screens[currentScreen].print (currentBatteryModule);
 
   // Find out which type of battery module is connected to the currently selected I2C bus:
   // 1) Fixed current, voltage monitoring only, via ADS1015 ADC on I2C 0x48 HEX, 72 DEC
   // 2) Adjustable current, via 4 modified TP4056 chargers and INA219 power monitors
-
   TinyWireM.beginTransmission(0x48);
   error = TinyWireM.endTransmission();
   if (error == 0) {
-    // ADS1015 found
-    for (byte meter = 0; meter < numMeters; meter++) {
-      float anVoltage;
-      anVoltage = (ads.readADC_SingleEnded(meter) * .003);
-      screens[currentScreen].setCursor ((meter * 5), (currentBatteryModule % 2) * 2);
-      screens[currentScreen].print(anVoltage, 2); //screens[currentScreen].print(" ");
+    // ADS1015 found on the currently attached I2C bus, collect voltage only
+    for (index = 0; index < numMeters; index++) {
+      voltage = (ads.readADC_SingleEnded(index) * .003);
+      screens[currentScreen].setCursor ((index * 5), lineNumber);
+      screens[currentScreen].print(voltage, 2);
+      screens[currentScreen].setCursor (0, lineNumber + 1);
+      screens[currentScreen].print("^ Fixed 500mA Max ^ ");
     }
   } else {
+    // Currently attached I2C bus has INA219 modules, collecting voltage and current
+    int16_t current_mA;
+    
+    // INA219 equipped battery modules show current, so print the 'i' character at the end of the current line
+    screens[currentScreen].setCursor (19, lineNumber + 1);
+    screens[currentScreen].print("i");
+  
+    // Iterate the INA219 modules on the currentBatteryModule
+    for (index = 0; index < numMeters; index++) {
+      voltage = meters[index].getBusVoltage_V();
+      current_mA = (int16_t) (meters[index].getCurrent_mA() + .5);
 
-    // Iterate the INA219 modules on the currently selected battery module
-    for (uint8_t meter = 0; meter < numMeters; meter++) {
-      //     Serial.print("In loop Battery Module: "); Serial.println(currentBatteryModule);
-
-      //    float shuntvoltage = 0;
-      float busvoltage = 0;
-      float current_mA = 0;
-      //    float loadvoltage = 0;
-      //    float power_mW = 0;
-
-      //    shuntvoltage = meters[meter].getShuntVoltage_mV();
-      busvoltage = meters[meter].getBusVoltage_V();
-      current_mA = meters[meter].getCurrent_mA();
-      //    power_mW = meters[meter].getPower_mW();
-      //    loadvoltage = busvoltage + (shuntvoltage / 1000);
-
-      if (current_mA < 1) {
-        //      sprintf(paddedCurrent, "% 4d", 0);
-        paddedCurrent = 0;
-      } else {
-        //      sprintf(paddedCurrent, "% 4d", round(current_mA));
-        paddedCurrent = round(current_mA);
+      screens[currentScreen].setCursor ((index * 5), lineNumber);
+      screens[currentScreen].print(voltage, 2);
+      screens[currentScreen].setCursor ((index * 5), lineNumber + 1);
+      if (current_mA < 2) {
+        current_mA = 0; // don't show random 1 mA readings
       }
-
-      //    paddedCurrent = round(current_mA);
-
-#ifdef SERIALON
-      Serial.print("Meter "); Serial.print(meter + 1); Serial.println(":");
-      Serial.print(" Bus Voltage:   "); Serial.print(busvoltage); Serial.println(" V");
-      //    Serial.print(" Shunt Voltage: "); Serial.print(shuntvoltage); Serial.println(" mV");
-      //    Serial.print(" Load Voltage:  "); Serial.print(loadvoltage); Serial.println(" V");
-      Serial.print(" Current:       "); Serial.print(current_mA); Serial.println(" mA");
-      //    Serial.print(" Power:         "); Serial.print(power_mW); Serial.println(" mW");
-      //    Serial.println("");
-
-      //    int roundedCurrent = round(current_mA);
-      //    Serial.print(" Rounded:       "); Serial.print(roundedCurrent); Serial.println(" mA");
-      //    Serial.println(paddedCurrent);
-#endif
-
-      screens[currentScreen].setCursor ((meter * 5), (currentBatteryModule % 2) * 2);
-      screens[currentScreen].print(busvoltage, 2); //screens[currentScreen].print(" ");
-      screens[currentScreen].setCursor ((meter * 5), ( ((currentBatteryModule % 2) * 2) + 1) );
-      if (paddedCurrent < 10) {
+      if (current_mA < 10) {
         screens[currentScreen].print("   ");
-      } else if (paddedCurrent < 100) {
+      } else if (current_mA < 100) {
         screens[currentScreen].print("  ");
-      } else if (paddedCurrent < 1000) {
+      } else if (current_mA < 1000) {
         screens[currentScreen].print(" ");
       }
-      screens[currentScreen].print(paddedCurrent);
-      //    screens[currentScreen].setCursor ( 0, 2 );            // go to the third row
-      //    screens[currentScreen].print("bus: ");
-      //    screens[currentScreen].print(currentBatteryModule);
-      //    screens[currentScreen].setCursor ( 0, 3 );            // go to the fourth row
-      //    screens[currentScreen].print(millis());
+      screens[currentScreen].print(current_mA);
     }
   }
 
-  delay(200);
-  //  Serial.print("Battery Module before: "); Serial.println(currentBatteryModule);
+  delay(100);
   currentBatteryModule++;
-  //  Serial.print("Battery Module after: "); Serial.println(currentBatteryModule);
 }
