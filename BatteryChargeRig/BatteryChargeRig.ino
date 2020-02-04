@@ -9,7 +9,7 @@
 */
 
 #include <TinyWireM.h>          // Adafruit Wwire library for ATTiny85 (ie Trinket), which uses USI to provide I2C or SPI
-//#include <USI_TWI_Master.h>   // Arduino adds this when selecting TinyWireM, does not appear strictly necessary
+#include <USI_TWI_Master.h>     // Also included by TinyWireM, so not strictly necessary
 
 // These I2C device librarys must be included *after* TinyWireM
 #include <LiquidCrystal_I2C.h>  // LCD display with I2C port expander backpack
@@ -78,6 +78,10 @@ void tcaselect(uint8_t i) {
 void setup(void)
 {
   uint8_t index; // common loop iterator
+
+  // These are not strictly necessary, call them anyway
+  TinyWireM.begin(); // Modified INA219 begin() would also do this
+  ads.begin(); // Calls Wire.begin(); perhaps it too can be converted to use TinyWireM?
 
   // Initialize all 4 INA219 objects in memory
   // Once up and running, groups of 4 physical INA219 modules will be swapped
