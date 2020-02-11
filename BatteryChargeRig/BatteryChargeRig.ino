@@ -135,7 +135,7 @@ void loop(void)
       screens[currentScreen].setCursor ((index * 5), lineNumber);
       screens[currentScreen].print(voltage, 2);
       screens[currentScreen].setCursor (0, lineNumber + 1);
-      screens[currentScreen].print("^ Fixed 500mA Max ^ ");
+      screens[currentScreen].print("^Static 500mA^ ^Bus^");
     }
   } else {
     // Currently attached I2C bus has INA219 modules, collecting voltage and current
