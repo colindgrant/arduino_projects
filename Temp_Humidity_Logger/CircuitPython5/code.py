@@ -7,10 +7,7 @@ import os
 import adafruit_sdcard
 import storage
 
-import adafruit_ds1307
 import adafruit_pcf8523
-
-from adafruit_htu21d import HTU21D
 import adafruit_sht31d
 
 # Get battery and system voltage
@@ -21,7 +18,6 @@ dvdr_voltage = AnalogIn(board.A5) # voltage divider with 2 equal resistors (220 
 i2c_bus = busio.I2C(board.SCL, board.SDA)
 
 # Initialize peripherals
-htu = HTU21D(i2c_bus)
 sht = adafruit_sht31d.SHT31D(i2c_bus)
 
 # rtc = adafruit_ds1307.DS1307(i2c_bus)
@@ -105,15 +101,13 @@ while True:
 #             print(line, end='')
 
     # averaged temps
-    htu_cumm_samples = 0
     sht_cumm_samples = 0
     for i in range(NUM_TEMP_SAMPLES):
-        htu_cumm_samples += htu.temperature
         sht_cumm_samples += sht.temperature
         time.sleep(TIME_BET_SAMPLES)
 
-    htu_temperature_c = htu_cumm_samples / NUM_TEMP_SAMPLES
     sht_temperature_c = sht_cumm_samples / NUM_TEMP_SAMPLES
+    sht_humidity_pcnt = sht.relative_humidity
 
     time_date = rtc.datetime
 
@@ -124,16 +118,13 @@ while True:
     print("\nThe VReg is: {:.2f}".format(get_voltage(dvdr_voltage)))
     print("The VBat is: {:.2f}".format(get_voltage(vbat_voltage)))
 
-    print("\nHTU21D Temperature: {:0.3f} C".format(htu_temperature_c))
-    print("HTU21D Humidity: {:0.1f} %".format(htu.relative_humidity))
-
     print("\nSHT31D Temperature: {:0.3f} C".format(sht_temperature_c))
-    print("SHT31D Humidity: {:0.1f} %".format(sht.relative_humidity))
+    print("SHT31D Humidity: {:0.1f} %".format(sht_humidity_pcnt))
     print("\n")
 
     # Write sample string, e.g.: 1583575730,19.489,48.5
     with open(sd_test_file, "a") as f:
-        f.write( "{},{:0.3f},{:0.1f}\r\n".format(time.mktime(time_date), htu_temperature_c, htu.relative_humidity) )
+        f.write( "{},{:0.3f},{:0.1f}\r\n".format(time.mktime(time_date), sht_temperature_c, sht_humidity_pcnt) )
 
     # Plotter color order: Green, Blue, Orange, Grey
-    print((htu_temperature_c, sht_temperature_c, htu_temperature_c - sht_temperature_c))
+    print((sht_temperature_c, sht_humidity_pcnt))
