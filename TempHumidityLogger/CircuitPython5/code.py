@@ -13,17 +13,15 @@ import adafruit_sht31d
 vbat_input = AnalogIn(board.VOLTAGE_MONITOR)
 dvdr_input = AnalogIn(board.A5) # voltage divider with 2 equal resistors (10kOhm)
 
-# Create library object using our Bus I2C port
-i2c_bus = busio.I2C(board.SCL, board.SDA)
+# Set up I2C and SPI for peripheral connections
+i2c = busio.I2C(board.SCL, board.SDA)
+spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
 
 # Initialize peripherals
-sht = adafruit_sht31d.SHT31D(i2c_bus)
+sht = adafruit_sht31d.SHT31D(i2c)
+rtc = adafruit_pcf8523.PCF8523(i2c)
 
-# rtc = adafruit_ds1307.DS1307(i2c_bus)
-rtc = adafruit_pcf8523.PCF8523(i2c_bus)
-
-# Set up SPI for the SD card logger
-spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
+# SD connection, filesystem, mount point
 cs = digitalio.DigitalInOut(board.D10)
 sdcard = adafruit_sdcard.SDCard(spi, cs)
 vfs = storage.VfsFat(sdcard)
