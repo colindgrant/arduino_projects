@@ -9,6 +9,9 @@ import storage
 import adafruit_pcf8523
 import adafruit_sht31d
 
+# True for Adafruit Feather nRF52840 Sense
+HASBMP = True
+
 # Get battery and system voltage
 vbat_input = AnalogIn(board.VOLTAGE_MONITOR)
 dvdr_input = AnalogIn(board.A5) # voltage divider with 2 equal resistors (10kOhm)
@@ -18,8 +21,12 @@ i2c = busio.I2C(board.SCL, board.SDA)
 spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
 
 # Initialize peripherals
-sht = adafruit_sht31d.SHT31D(i2c)
 rtc = adafruit_pcf8523.PCF8523(i2c)
+sht = adafruit_sht31d.SHT31D(i2c)
+if HASBMP:
+    import adafruit_bmp280
+    bmp280 = adafruit_bmp280.Adafruit_BMP280_I2C(i2c)
+    bmp280.sea_level_pressure = 1018 # Guess, based on matching reported altitude
 
 # SD connection, filesystem, mount point
 cs = digitalio.DigitalInOut(board.D10)
@@ -120,6 +127,11 @@ while True:
 
     print("SHT31D Temp: {:0.3f} C".format(sht_temperature_c))
     print("SHT31D Relh: {:0.1f} %".format(sht_humidity_pcnt))
+
+    if HASBMP:
+        print("BMP280 Temp: {:0.3f} C".format(bmp280.temperature))
+        print("BMP280 Pres: {:0.1f} hPa".format(bmp280.pressure))
+        print("BMP280 Altd: {:0.1f} M".format(bmp280.altitude))
 
     # Write sample string, e.g.: 1583575730,19.489,48.5
     with open(sd_test_file, "a") as f:
