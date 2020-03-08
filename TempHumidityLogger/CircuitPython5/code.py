@@ -6,13 +6,12 @@ from analogio import AnalogIn
 import os
 import adafruit_sdcard
 import storage
-
 import adafruit_pcf8523
 import adafruit_sht31d
 
 # Get battery and system voltage
-vbat_voltage = AnalogIn(board.VOLTAGE_MONITOR)
-dvdr_voltage = AnalogIn(board.A5) # voltage divider with 2 equal resistors (220 Ohm)
+vbat_input = AnalogIn(board.VOLTAGE_MONITOR)
+dvdr_input = AnalogIn(board.A5) # voltage divider with 2 equal resistors (10kOhm)
 
 # Create library object using our Bus I2C port
 i2c_bus = busio.I2C(board.SCL, board.SDA)
@@ -84,15 +83,15 @@ while True:
 #     print("====================")
 #     print_directory("/sd")
 
-    print("\nContents of {}:".format(sd_test_file))
-    print("====================")
+#     print("\nContents of {}:".format(sd_test_file))
+#     print("====================")
 
     # read and print one line at a time, no memory risk
-    with open(sd_test_file, "r") as f:
-        line = f.readline()
-        while line != '':
-            print(line, end='')
-            line = f.readline()
+#     with open(sd_test_file, "r") as f:
+#         line = f.readline()
+#         while line != '':
+#             print(line, end='')
+#             line = f.readline()
 
     # read whole file into memory, could overflow
 #     with open(sd_test_file, "r") as f:
@@ -111,20 +110,32 @@ while True:
 
     time_date = rtc.datetime
 
+    battery_v = get_voltage(vbat_input)
+    divider_v = get_voltage(dvdr_input)
+
     print("The date is: {}, {}-{:02}-{:02}".format(days[int(time_date.tm_wday)], time_date.tm_year, time_date.tm_mon, time_date.tm_mday))
     print("The time is: {}:{:02}:{:02}".format(time_date.tm_hour, time_date.tm_min, time_date.tm_sec))
     print("Epoch    is: {}".format(time.mktime(time_date)))
 
-    print("\nThe VReg is: {:.2f}".format(get_voltage(dvdr_voltage)))
-    print("The VBat is: {:.2f}".format(get_voltage(vbat_voltage)))
+    print("The VBat is: {:.2f}".format(battery_v))
+    print("The VReg is: {:.2f}".format(divider_v))
 
-    print("\nSHT31D Temperature: {:0.3f} C".format(sht_temperature_c))
-    print("SHT31D Humidity: {:0.1f} %".format(sht_humidity_pcnt))
-    print("\n")
+    print("SHT31D Temp: {:0.3f} C".format(sht_temperature_c))
+    print("SHT31D Relh: {:0.1f} %".format(sht_humidity_pcnt))
 
     # Write sample string, e.g.: 1583575730,19.489,48.5
     with open(sd_test_file, "a") as f:
-        f.write( "{},{:0.3f},{:0.1f}\r\n".format(time.mktime(time_date), sht_temperature_c, sht_humidity_pcnt) )
+        print("Saving to SD\n")
+        f.write("{:02}-{:02}_{}:{:02}:{:02},{},{:0.3f},{:0.1f},{:.2f}\r\n".format(
+            time_date.tm_mon,
+            time_date.tm_mday,
+            time_date.tm_hour,
+            time_date.tm_min,
+            time_date.tm_sec,
+            time.mktime(time_date),
+            sht_temperature_c,
+            sht_humidity_pcnt,
+            battery_v))
 
     # Plotter color order: Green, Blue, Orange, Grey
-    print((sht_temperature_c, sht_humidity_pcnt))
+#     print((sht_temperature_c, sht_humidity_pcnt, battery_v))
