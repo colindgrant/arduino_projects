@@ -26,7 +26,7 @@ sht = adafruit_sht31d.SHT31D(i2c)
 if HASBMP:
     import adafruit_bmp280
     bmp280 = adafruit_bmp280.Adafruit_BMP280_I2C(i2c)
-    bmp280.sea_level_pressure = 1018 # Guess, based on matching reported altitude
+    bmp280.sea_level_pressure = 1018 # Derived by matching resulting altitude to known value
 
 # SD connection, filesystem, mount point
 cs = digitalio.DigitalInOut(board.D10)
@@ -104,6 +104,13 @@ while True:
 #         for line in lines:
 #             print(line, end='')
 
+    # hack to run the collection on the minute and minimize processor time spent looping
+    time_date = rtc.datetime
+    if time_date.tm_sec != 0:
+        # the loop sleeps for 50s after ~5s of run time, so <10 cycles in here
+        time.sleep(.5)
+        continue
+
     # averaged temps
     sht_cumm_samples = 0
     for i in range(NUM_TEMP_SAMPLES):
@@ -112,8 +119,6 @@ while True:
 
     sht_temperature_c = sht_cumm_samples / NUM_TEMP_SAMPLES
     sht_humidity_pcnt = sht.relative_humidity
-
-    time_date = rtc.datetime
 
     battery_v = get_voltage(vbat_input)
     divider_v = get_voltage(dvdr_input)
@@ -135,7 +140,7 @@ while True:
 
     # Write sample string, e.g.: 1583575730,19.489,48.5
     with open(sd_test_file, "a") as f:
-        print("Saving to SD\n")
+        print("Saving to SD")
         f.write("{:02}-{:02}_{}:{:02}:{:02},{},{:0.3f},{:0.1f},{:.2f}\r\n".format(
             time_date.tm_mon,
             time_date.tm_mday,
@@ -149,3 +154,7 @@ while True:
 
     # Plotter color order: Green, Blue, Orange, Grey
 #     print((sht_temperature_c, sht_humidity_pcnt, battery_v))
+
+    # NUM_TEMP_SAMPLES * TIME_BET_SAMPLES currently 5 sec, so after collection, sleep 50 seconds, leave ~5 seconds to catch the 0 second`
+    print("Sleeping for 50s\n")
+    time.sleep(50)
