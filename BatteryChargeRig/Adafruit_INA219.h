@@ -12,6 +12,9 @@
  *
  * BSD license, all text here must be included in any redistribution.
  *
+ * This version of libary modified to work with TinyWireM, taken from:
+ * https://github.com/josefadamcik/INA219PowerMeasurementUnit/commit/0faed21eda96adb0248a3773360704ddbe20dc3b
+ *
  */
 
 #ifndef _LIB_ADAFRUIT_INA219_
