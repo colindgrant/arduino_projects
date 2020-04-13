@@ -130,12 +130,29 @@ void loop(void)
   error = TinyWireM.endTransmission();
   if (error == 0) {
     // ADS1015 found on the currently attached I2C bus, collect voltage only
+
+    //  Amazon knock-offs of the Adafruit ADS1015 breakout have their inputs mixed up:
+    //  A0 = index 1
+    //  A1 = index 2
+    //  A2 = index 3
+    //  A3 = index 0
+    //  On the battery module, index 0 is the rightmost rather than leftmost battery:
+    //   _--_   _--_   _--_   _--_
+    //  |    | |    | |    | |    |
+    //  | A0 | | A1 | | A2 | | A3 |
+    //  |    | |    | |    | |    |
+    //  | i1 | | i2 | | i3 | | i0 |
+    //  |    | |    | |    | |    |
+    //   ----   ----   ----   ----
+
+    byte remapInputs[] = {3, 0, 1, 2};
+
     for (index = 0; index < numMeters; index++) {
       voltage = (ads.readADC_SingleEnded(index) * .003);
-      screens[currentScreen].setCursor ((index * 5), lineNumber);
+      screens[currentScreen].setCursor ((remapInputs[index] * 5), lineNumber);
       screens[currentScreen].print(voltage, 2);
       screens[currentScreen].setCursor (0, lineNumber + 1);
-      screens[currentScreen].print("^Static 500mA^ ^Bus^");
+      screens[currentScreen].print("^ Fixed 500mA max. ^");
     }
   } else {
     // Currently attached I2C bus has INA219 modules, collecting voltage and current

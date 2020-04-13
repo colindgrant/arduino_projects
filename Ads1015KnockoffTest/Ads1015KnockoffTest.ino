@@ -76,12 +76,14 @@ void loop() {
   uint8_t numMeters = 4; // 4 ADC channels
   uint8_t index; // common loop iterator
   float voltage;
+  byte remapInputs[] = {3, 0, 1, 2};
+
   
   for (index = 0; index < numMeters; index++) {
     delay (10); // required to get actual readings
     voltage = (ads.readADC_SingleEnded(index) * .003); // .003mV per division
     Serial.print("Voltage ");
-    Serial.print(index);
+    Serial.print(remapInputs[index]);
     Serial.print(": ");
     Serial.println(voltage);
   }
