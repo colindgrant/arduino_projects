@@ -16,6 +16,9 @@
 #include "Adafruit_INA219.h"    // Adafruit's INA219 current/voltage monitor library modified to use TinyWireM, see: https://github.com/josefadamcik/INA219PowerMeasurementUnit
 #include <Adafruit_ADS1015.h>   // Adafruit's ADC breakout as voltage monitor
 
+// This project assumes 12-bit ADS1015 chip by default
+// Uncomment if using the higher precision 16-bit ADS1115 chip
+#define ADS1115
 
 // ********** Device objects **********
 
@@ -32,7 +35,7 @@
 
   LiquidCrystal_I2C screen_0(0x27, 20, 4); // default
   LiquidCrystal_I2C screen_1(0x26, 20, 4); // A0 low
-  LiquidCrystal_I2C screen_2(0x25, 20, 4); //A1 low
+  LiquidCrystal_I2C screen_2(0x25, 20, 4); // A1 low
   LiquidCrystal_I2C screen_3(0x24, 20, 4); // A0 and A1 low
   ...
 */
@@ -42,7 +45,11 @@ LiquidCrystal_I2C screens[] = {LiquidCrystal_I2C(0x27, 20, 4), LiquidCrystal_I2C
 Adafruit_INA219 meters[] = {Adafruit_INA219(0x40), Adafruit_INA219(0x41), Adafruit_INA219(0x44), Adafruit_INA219(0x45)};
 
 // ADC used as voltage monitor, I2C address 0x48 HEX, 72 DEC
-Adafruit_ADS1015 ads;
+#ifdef ADS1115
+  Adafruit_ADS1115 ads;
+#else
+  Adafruit_ADS1015 ads;
+#endif
 
 
 // ********** Global Constants **********
@@ -56,6 +63,11 @@ const uint8_t numMeters = 4;
 const uint8_t numScreens = 2;
 const uint8_t numBatteryModules = 4;
 
+#ifdef ADS1115
+  const float voltsPerDivision = .0001875;
+#else
+  const float voltsPerDivision = .003;
+#endif
 
 // ********** Global Variables **********
 
@@ -130,26 +142,9 @@ void loop(void)
   error = TinyWireM.endTransmission();
   if (error == 0) {
     // ADS1015 found on the currently attached I2C bus, collect voltage only
-
-    //  Amazon knock-offs of the Adafruit ADS1015 breakout have their inputs mixed up:
-    //  A0 = index 1
-    //  A1 = index 2
-    //  A2 = index 3
-    //  A3 = index 0
-    //  On the battery module, index 0 is the rightmost rather than leftmost battery:
-    //   _--_   _--_   _--_   _--_
-    //  |    | |    | |    | |    |
-    //  | A0 | | A1 | | A2 | | A3 |
-    //  |    | |    | |    | |    |
-    //  | i1 | | i2 | | i3 | | i0 |
-    //  |    | |    | |    | |    |
-    //   ----   ----   ----   ----
-
-    byte remapInputs[] = {3, 0, 1, 2};
-
     for (index = 0; index < numMeters; index++) {
-      voltage = (ads.readADC_SingleEnded(index) * .003);
-      screens[currentScreen].setCursor ((remapInputs[index] * 5), lineNumber);
+      voltage = (ads.readADC_SingleEnded(index) * voltsPerDivision);
+      screens[currentScreen].setCursor (index * 5, lineNumber);
       screens[currentScreen].print(voltage, 2);
       screens[currentScreen].setCursor (0, lineNumber + 1);
       screens[currentScreen].print("^ Fixed 500mA max. ^");

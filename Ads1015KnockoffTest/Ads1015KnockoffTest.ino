@@ -8,7 +8,7 @@
 #include <Wire.h>
  
 // ADC used as voltage monitor, I2C address 0x48 HEX, 72 DEC
-Adafruit_ADS1015 ads;
+Adafruit_ADS1115 ads;
 
 void iic_discover() {
   byte error, address;
@@ -76,14 +76,12 @@ void loop() {
   uint8_t numMeters = 4; // 4 ADC channels
   uint8_t index; // common loop iterator
   float voltage;
-  byte remapInputs[] = {3, 0, 1, 2};
-
   
   for (index = 0; index < numMeters; index++) {
     delay (10); // required to get actual readings
-    voltage = (ads.readADC_SingleEnded(index) * .003); // .003mV per division
+    voltage = (ads.readADC_SingleEnded(index) * .0001875); // .003mV per division for 12-bit ADS1015
     Serial.print("Voltage ");
-    Serial.print(remapInputs[index]);
+    Serial.print(index);
     Serial.print(": ");
     Serial.println(voltage);
   }
