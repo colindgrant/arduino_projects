@@ -1,17 +1,15 @@
 /*
   Colin 2020-03-07
   Basic validation of Feather M4 with RTC + SD Featherwing
-  This sketch combines Adafruit PCF8523 and CardInfo examples into one:
-  
+  This sketch combines the following examples into one:
 
-  Date and time functions using a PCF8523 RTC connected via I2C and Wire lib
+  Adafruit
+  RTCLib PCF8523 and DS1307SqwPin
+  CardInfo
+  BlinkWithoutDelay
 
-  
-  SD card test
-
-  This example shows how use the utility libraries on which the'
-  SD library is based in order to get info about your SD card.
-  Very useful for testing a card when you're not sure whether its working or not.
+  Test Date and time functions using a PCF8523 RTC connected via I2C and Wire lib
+  Perform SD card test
 
   The circuit:
     SD card attached to SPI bus as follows:
@@ -19,13 +17,9 @@
  ** MISO - pin 12 on Arduino Uno/Duemilanove/Diecimila
  ** CLK - pin 13 on Arduino Uno/Duemilanove/Diecimila
  ** CS - depends on your SD card shield or module.
-     Pin 4 used here for consistency with other Arduino examples
 
+  PCF8523 square wave to digital pin 5
 
-  created  28 Mar 2011
-  by Limor Fried
-  modified 9 Apr 2012
-  by Tom Igoe
 */
 
 
@@ -35,6 +29,9 @@
 // include the SD library:
 #include <SPI.h>
 #include <SD.h>
+
+#define MONITOR_PIN 5
+
 
 // Set up RTC variables
 RTC_PCF8523 rtc;
@@ -52,12 +49,28 @@ SdFile root;
 // MKRZero SD: SDCARD_SS_PIN
 const int chipSelect = 10;
 
+// interrupt counter
+int counter = 0;
+
+// seconds between action
+const int betweenSamples = 30;
+
+// Generally, you should use "unsigned long" for variables that hold time
+// The value will quickly become too large for an int to store
+unsigned long previousMillis = 0;        // will store last time LED was updated
+
+// constants won't change:
+const long interval = 1000;           // interval at which to blink (milliseconds)
+
 void setup() {
   // Open serial communications and wait for port to open:
-  Serial.begin(57600);
+  Serial.begin(115200);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(MONITOR_PIN, INPUT_PULLUP);
 
   Serial.println("Starting RTC...");
   if (! rtc.begin()) {
@@ -65,14 +78,31 @@ void setup() {
     while (1);
   }
 
-  Serial.println("Setting current time...");
   if (! rtc.initialized()) {
     Serial.println("RTC is NOT running!");
-    // following line sets the RTC to the date & time this sketch was compiled
-     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    // This line sets the RTC with an explicit date & time, for example to set
-    // January 21, 2014 at 3am you would call:
-    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  }
+  // following line sets the RTC to the date & time this sketch was compiled
+  Serial.println("Setting current time...");
+   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // This line sets the RTC with an explicit date & time, for example to set
+  // January 21, 2014 at 3am you would call:
+  // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+
+
+  Serial.print("\nSetting Square Wave...");
+  rtc.writeSqwPinMode(PCF8523_SquareWave1HZ);
+  Pcf8523SqwPinMode mode = rtc.readSqwPinMode();
+
+  switch(mode) {
+    case PCF8523_OFF:             Serial.println("OFF");       break;
+    case PCF8523_SquareWave1HZ:   Serial.println("1Hz");       break;
+    case PCF8523_SquareWave32HZ:  Serial.println("32Hz");      break;
+    case PCF8523_SquareWave1kHz:  Serial.println("1kHz");      break;
+    case PCF8523_SquareWave4kHz:  Serial.println("4.096kHz");  break;
+    case PCF8523_SquareWave8kHz:  Serial.println("8.192kHz");  break;
+    case PCF8523_SquareWave16kHz: Serial.println("16.384kHz"); break;
+    case PCF8523_SquareWave32kHz: Serial.println("32.768kHz"); break;
+    default:                      Serial.println("UNKNOWN");   break;
   }
 
   for (byte i=0; i < 5; i++) {
@@ -147,11 +177,17 @@ void setup() {
 
   // list all files in the card with date and size
   root.ls(LS_R | LS_DATE | LS_SIZE);
+
+  // We're done with setup stuff, now start the interrupt loop
+  attachInterrupt(MONITOR_PIN, onAlarm, FALLING);
+
+
 }
 
 void showtime() {
     DateTime now = rtc.now();
 
+    Serial.print("The current time is: ");
     Serial.print(now.year(), DEC);
     Serial.print('/');
     Serial.print(now.month(), DEC);
@@ -190,6 +226,22 @@ void showtime() {
     Serial.print(future.second(), DEC);
     Serial.println();
     Serial.println();
+}
+
+void onAlarm() {
+  noInterrupts();
+  ++counter;
+  if (counter == betweenSamples) {
+    unsigned long currentMillis = millis();
+    Serial.print("\nElapsed millis(): ");
+    Serial.println(currentMillis - previousMillis);
+    showtime();
+    previousMillis = currentMillis;
+//    Serial.println(millis());
+    counter = 0;
+  }
+  Serial.println(counter);
+  interrupts();
 }
 
 void loop(void) {
