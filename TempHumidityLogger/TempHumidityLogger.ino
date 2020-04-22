@@ -1,248 +1,262 @@
 /*
-  Colin 2020-03-07
+  Colin 2020-04-21
   Basic validation of Feather M4 with RTC + SD Featherwing
+  Logs time, battery voltage, temp, humidity to CSV file on SD card
+
   This sketch combines the following examples into one:
 
   Adafruit
   RTCLib PCF8523 and DS1307SqwPin
   CardInfo
   BlinkWithoutDelay
-
-  Test Date and time functions using a PCF8523 RTC connected via I2C and Wire lib
-  Perform SD card test
-
-  The circuit:
-    SD card attached to SPI bus as follows:
- ** MOSI - pin 11 on Arduino Uno/Duemilanove/Diecimila
- ** MISO - pin 12 on Arduino Uno/Duemilanove/Diecimila
- ** CLK - pin 13 on Arduino Uno/Duemilanove/Diecimila
- ** CS - depends on your SD card shield or module.
-
-  PCF8523 square wave to digital pin 5
+  
 
 */
 
 
-// include general RTC library that works with PCF8523
-#include "RTClib.h"
+#include <RTClib.h>                     // PCF8523
+#include <SPI.h>                        // SD
+#include <SdFat.h>                      // Filesystem
+#include <Adafruit_SHT31.h>             // Temp and humidity
 
-// include the SD library:
-#include <SPI.h>
-#include <SD.h>
+// Log file base name.  Must be six characters or less.
+#define FILE_BASE_NAME "Vent1_"
 
-#define MONITOR_PIN 5
+#define SQUARE_WAVE_SIGNAL_PIN 5        // PCF8523
+#define SD_CS_PIN 10
+#define error(msg) sd.errorHalt(F(msg))
 
+// voltage reading ADC settings
+// https://learn.adafruit.com/bluefruit-nrf52-feather-learning-guide/nrf52-adc
+#define VREFMULTIPLIER AR_INTERNAL_2_4  // 0..2.4v
+#define ADCBITS 10                      // fast reads
+#define ADCDIVISIONS 1024               // 2^10 = 1024
 
-// Set up RTC variables
+// Set up RTC
 RTC_PCF8523 rtc;
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
-// set up variables using the SD utility library functions:
-Sd2Card card;
-SdVolume volume;
-SdFile root;
+// Set up Temp and Humidity sensor
+Adafruit_SHT31 sht31 = Adafruit_SHT31();
 
-// change this to match your SD shield or module;
-// Arduino Ethernet shield: pin 4
-// Adafruit SD shields and modules: pin 10
-// Sparkfun SD shield: pin 8
-// MKRZero SD: SDCARD_SS_PIN
-const int chipSelect = 10;
+// File system object
+SdFat sd;
+
+// Log file
+SdFile file;
+
+const uint8_t BASE_NAME_SIZE = sizeof(FILE_BASE_NAME) - 1;
+char fileName[13] = FILE_BASE_NAME "00.csv";
+
+// seconds between action
+const int betweenSamples = 5;
 
 // interrupt counter
 int counter = 0;
 
-// seconds between action
-const int betweenSamples = 30;
+// whether it is time to take a new sample
+bool timeForSample = false;
 
-// Generally, you should use "unsigned long" for variables that hold time
-// The value will quickly become too large for an int to store
-unsigned long previousMillis = 0;        // will store last time LED was updated
-
-// constants won't change:
-const long interval = 1000;           // interval at which to blink (milliseconds)
 
 void setup() {
+
   // Open serial communications and wait for port to open:
   Serial.begin(115200);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
 
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(MONITOR_PIN, INPUT_PULLUP);
+  // Set up ADC for voltage reading
+  analogReadResolution(ADCBITS);
+  analogReference(VREFMULTIPLIER);
 
-  Serial.println("Starting RTC...");
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(SQUARE_WAVE_SIGNAL_PIN, INPUT_PULLUP);
+
+  Serial.print("\nStarting RTC...");
   if (! rtc.begin()) {
     Serial.println("Couldn't find RTC");
     while (1);
   }
+  Serial.println("Done.");
 
   if (! rtc.initialized()) {
     Serial.println("RTC is NOT running!");
   }
-  // following line sets the RTC to the date & time this sketch was compiled
-  Serial.println("Setting current time...");
-   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
+  Serial.print("\nSetting current time...");
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   // This line sets the RTC with an explicit date & time, for example to set
   // January 21, 2014 at 3am you would call:
   // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  Serial.println("Done.");
 
-
-  Serial.print("\nSetting Square Wave...");
+  Serial.print("\nSetting 1Hz Square Wave...");
   rtc.writeSqwPinMode(PCF8523_SquareWave1HZ);
   Pcf8523SqwPinMode mode = rtc.readSqwPinMode();
+  Serial.println("Done.");
 
-  switch(mode) {
-    case PCF8523_OFF:             Serial.println("OFF");       break;
-    case PCF8523_SquareWave1HZ:   Serial.println("1Hz");       break;
-    case PCF8523_SquareWave32HZ:  Serial.println("32Hz");      break;
-    case PCF8523_SquareWave1kHz:  Serial.println("1kHz");      break;
-    case PCF8523_SquareWave4kHz:  Serial.println("4.096kHz");  break;
-    case PCF8523_SquareWave8kHz:  Serial.println("8.192kHz");  break;
-    case PCF8523_SquareWave16kHz: Serial.println("16.384kHz"); break;
-    case PCF8523_SquareWave32kHz: Serial.println("32.768kHz"); break;
-    default:                      Serial.println("UNKNOWN");   break;
+  Serial.print("\nInitializing SHT31...");
+  if (! sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
+    Serial.println("Couldn't find SHT31");
+    while (1) delay(1);
   }
-
-  for (byte i=0; i < 5; i++) {
-    showtime();
-    delay(1000);
-  }
+  Serial.println("Done.");
 
   Serial.print("\nInitializing SD card...");
-
-  // we'll use the initialization code from the utility libraries
-  // since we're just testing if the card is working!
-  if (!card.init(SPI_HALF_SPEED, chipSelect)) {
-    Serial.println("initialization failed. Things to check:");
-    Serial.println("* is a card inserted?");
-    Serial.println("* is your wiring correct?");
-    Serial.println("* did you change the chipSelect pin to match your shield or module?");
-    while (1);
-  } else {
-    Serial.println("Wiring is correct and a card is present.");
+  // Initialize at the highest speed supported by the board that is
+  // not over 50 MHz. Try a lower speed if SPI errors occur.
+  if (!sd.begin(SD_CS_PIN, SPI_HALF_SPEED)) {
+    Serial.println(F("SD card failed to initialize"));
+    sd.initErrorHalt();
   }
+  Serial.println("Done.");
 
-  // print the type of card
-  Serial.println();
-  Serial.print("Card type:         ");
-  switch (card.type()) {
-    case SD_CARD_TYPE_SD1:
-      Serial.println("SD1");
-      break;
-    case SD_CARD_TYPE_SD2:
-      Serial.println("SD2");
-      break;
-    case SD_CARD_TYPE_SDHC:
-      Serial.println("SDHC");
-      break;
-    default:
-      Serial.println("Unknown");
+  Serial.print("\nOpening data file...");
+  // Find an unused file name.
+  if (BASE_NAME_SIZE > 6) {
+    error("FILE_BASE_NAME too long");
   }
-
-  // Now we will try to open the 'volume'/'partition' - it should be FAT16 or FAT32
-  if (!volume.init(card)) {
-    Serial.println("Could not find FAT16/FAT32 partition.\nMake sure you've formatted the card");
-    while (1);
+  while (sd.exists(fileName)) {
+    if (fileName[BASE_NAME_SIZE + 1] != '9') {
+      fileName[BASE_NAME_SIZE + 1]++;
+    } else if (fileName[BASE_NAME_SIZE] != '9') {
+      fileName[BASE_NAME_SIZE + 1] = '0';
+      fileName[BASE_NAME_SIZE]++;
+    } else {
+      error("Can't create file name");
+    }
   }
+  if (!file.open(fileName, O_RDWR | O_CREAT | O_EXCL)) {
+    error("file.open");
+  }
+  Serial.println("Done.");
 
-  Serial.print("Clusters:          ");
-  Serial.println(volume.clusterCount());
-  Serial.print("Blocks x Cluster:  ");
-  Serial.println(volume.blocksPerCluster());
+  Serial.print(F("Logging to: "));
+  Serial.println(fileName);
 
-  Serial.print("Total Blocks:      ");
-  Serial.println(volume.blocksPerCluster() * volume.clusterCount());
-  Serial.println();
-
-  // print the type and size of the first FAT-type volume
-  uint32_t volumesize;
-  Serial.print("Volume type is:    FAT");
-  Serial.println(volume.fatType(), DEC);
-
-  volumesize = volume.blocksPerCluster();    // clusters are collections of blocks
-  volumesize *= volume.clusterCount();       // we'll have a lot of clusters
-  volumesize /= 2;                           // SD card blocks are always 512 bytes (2 blocks are 1KB)
-  Serial.print("Volume size (Kb):  ");
-  Serial.println(volumesize);
-  Serial.print("Volume size (Mb):  ");
-  volumesize /= 1024;
-  Serial.println(volumesize);
-  Serial.print("Volume size (Gb):  ");
-  Serial.println((float)volumesize / 1024.0);
-
-  Serial.println("\nFiles found on the card (name, date and size in bytes): ");
-  root.openRoot(volume);
-
-  // list all files in the card with date and size
-  root.ls(LS_R | LS_DATE | LS_SIZE);
-
-  // We're done with setup stuff, now start the interrupt loop
-  attachInterrupt(MONITOR_PIN, onAlarm, FALLING);
-
+  // We're done with setup stuff, now start the interrupt loop.
+  enableRTC();
 
 }
 
-void showtime() {
-    DateTime now = rtc.now();
+void enableRTC() {
+  // Square wave input has pullup, when RTC pulls from high to low,
+  // call onAlarm(), which will determine if it's time to take a sample.
+  // TODO: make this based on an actual alarm signal (>1s) from RTC.
+  attachInterrupt(SQUARE_WAVE_SIGNAL_PIN, onAlarm, FALLING);
+}
 
-    Serial.print("The current time is: ");
-    Serial.print(now.year(), DEC);
-    Serial.print('/');
-    Serial.print(now.month(), DEC);
-    Serial.print('/');
-    Serial.print(now.day(), DEC);
-    Serial.print(" (");
-    Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
-    Serial.print(") ");
-    Serial.print(now.hour(), DEC);
-    Serial.print(':');
-    Serial.print(now.minute(), DEC);
-    Serial.print(':');
-    Serial.print(now.second(), DEC);
-    Serial.println();
+void disableRTC() {
+  detachInterrupt(SQUARE_WAVE_SIGNAL_PIN);
+}
 
-    Serial.print(" since midnight 1/1/1970 = ");
-    Serial.print(now.unixtime());
-    Serial.print("s = ");
-    Serial.print(now.unixtime() / 86400L);
-    Serial.println("d");
+void printStoredSamples() {
+  file.rewind();
+  while (file.available()) {
+    Serial.write(file.read());
+  }
+}
 
-    // calculate a date which is 7 days, 12 hours and 30 seconds into the future
-    DateTime future (now + TimeSpan(7,12,30,6));
+void showTime(DateTime now) {
+  Serial.print("The current time is: ");
+  Serial.print(now.year(), DEC);
+  Serial.print('/');
+  Serial.print(now.month(), DEC);
+  Serial.print('/');
+  Serial.print(now.day(), DEC);
+  Serial.print(" ");
+  Serial.print(now.hour(), DEC);
+  Serial.print(':');
+  Serial.print(now.minute(), DEC);
+  Serial.print(':');
+  Serial.print(now.second(), DEC);
+  Serial.print(" ");
+  Serial.println(now.unixtime());
+}
 
-    Serial.print(" now + 7d + 12h + 30m + 6s: ");
-    Serial.print(future.year(), DEC);
-    Serial.print('/');
-    Serial.print(future.month(), DEC);
-    Serial.print('/');
-    Serial.print(future.day(), DEC);
-    Serial.print(' ');
-    Serial.print(future.hour(), DEC);
-    Serial.print(':');
-    Serial.print(future.minute(), DEC);
-    Serial.print(':');
-    Serial.print(future.second(), DEC);
-    Serial.println();
-    Serial.println();
+float getVoltage() {
+  // 2^10 = 1024 divisions, PIN_VBAT is connected to even divider
+  // Input max 2.1v for fully charged 4.2v battery, use 2.4 reference
+  return (analogRead(PIN_VBAT) * 2.4 / ADCDIVISIONS * 2);
+}
+
+void takeSample() {
+  // Here is where data collection and storage happens
+  float t = sht31.readTemperature();
+  float h = sht31.readHumidity();
+  DateTime now = rtc.now();
+  float v = getVoltage();
+
+  #ifdef DEBUG
+  showTime(now);
+  if (! isnan(t)) {  // check if 'is not a number'
+    Serial.print("Temp *C = "); Serial.println(t);
+  } else { 
+    Serial.println("Failed to read temperature");
+  }
+  if (! isnan(h)) {  // check if 'is not a number'
+    Serial.print("Hum. % = "); Serial.println(h);
+  } else { 
+    Serial.println("Failed to read humidity");
+  }
+  Serial.print("Voltage is: ");
+  Serial.println(v);
+  #endif
+
+  // Write data to file. Start with unix time.
+  file.print(now.unixtime());
+  file.print(',');
+  file.print(v);
+  file.print(',');
+  file.print(t);
+  file.print(',');
+  file.print(h);
+
+  // End with a new line
+  file.println();
+
+  // Write data to file. Start with unix time.
+  Serial.println();
+  Serial.print(now.unixtime());
+  Serial.print(',');
+  Serial.print(v);
+  Serial.print(',');
+  Serial.print(t);
+  Serial.print(',');
+  Serial.print(h);
+
+  // End with a new line
+  Serial.println();
+
+  // Force data to SD and update the directory entry to avoid data loss.
+  if (!file.sync() || file.getWriteError()) {
+    error("write error");
+  }
+
+  // So that loop() will skip until it's time to take another
+  timeForSample = false;
 }
 
 void onAlarm() {
-  noInterrupts();
   ++counter;
   if (counter == betweenSamples) {
-    unsigned long currentMillis = millis();
-    Serial.print("\nElapsed millis(): ");
-    Serial.println(currentMillis - previousMillis);
-    showtime();
-    previousMillis = currentMillis;
-//    Serial.println(millis());
+    timeForSample = true;
     counter = 0;
+    digitalWrite(LED_BUILTIN, HIGH);   
+  } else {
+    digitalWrite(LED_BUILTIN, LOW);
   }
-  Serial.println(counter);
-  interrupts();
+  Serial.print(counter);
+  Serial.print(' ');
 }
 
 void loop(void) {
+  // Temp sensor uses I2C which doesn't work reliably during an interrupt,
+  // so initiate sampling here, immediately after the last interrupt.
+  if (timeForSample) {
+    takeSample();
+
+    // don't do this forever, the time it takes to print will increase
+    // printStoredSamples();
+  }  
 }
