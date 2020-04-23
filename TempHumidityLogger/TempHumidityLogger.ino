@@ -9,7 +9,7 @@
   RTCLib PCF8523 and DS1307SqwPin
   CardInfo
   BlinkWithoutDelay
-  
+
 
 */
 
@@ -32,6 +32,18 @@
 #define ADCBITS 10                      // fast reads
 #define ADCDIVISIONS 1024               // 2^10 = 1024
 
+//#define DEBUG
+//#define USESERIAL1
+
+#ifdef USESERIAL1
+#define DEBUGSERIALPORT Serial1
+#else
+#define DEBUGSERIALPORT Serial
+#endif
+
+#define SETDATETIMEANDSQUAREWAVE // Set the RTC time to system compile time, configure 1 Hz Square Wave. Runs about 12 seconds behind.
+#define TIMESINCECOMPILE 12 // Adjust for the lag between setting __TIME__ during compile, and actually setting time on the RTC 
+
 // Set up RTC
 RTC_PCF8523 rtc;
 
@@ -51,7 +63,7 @@ char fileName[13] = FILE_BASE_NAME "00.csv";
 const int betweenSamples = 5;
 
 // interrupt counter
-int counter = 0;
+byte counter = 0;
 
 // whether it is time to take a new sample
 bool timeForSample = false;
@@ -60,7 +72,7 @@ bool timeForSample = false;
 void setup() {
 
   // Open serial communications and wait for port to open:
-  Serial.begin(115200);
+  DEBUGSERIALPORT.begin(115200);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
@@ -72,46 +84,45 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(SQUARE_WAVE_SIGNAL_PIN, INPUT_PULLUP);
 
-  Serial.print("\nStarting RTC...");
+  DEBUGSERIALPORT.print("\nStarting RTC...");
   if (! rtc.begin()) {
-    Serial.println("Couldn't find RTC");
+    DEBUGSERIALPORT.println("Couldn't find RTC");
     while (1);
   }
-  Serial.println("Done.");
+  DEBUGSERIALPORT.println("Done.");
 
   if (! rtc.initialized()) {
-    Serial.println("RTC is NOT running!");
+    DEBUGSERIALPORT.println("RTC is NOT running!");
   }
 
-  Serial.print("\nSetting current time...");
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  // This line sets the RTC with an explicit date & time, for example to set
-  // January 21, 2014 at 3am you would call:
-  // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
-  Serial.println("Done.");
+#ifdef SETDATETIMEANDSQUAREWAVE
+  DEBUGSERIALPORT.print("\nSetting current time...");
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)).unixtime() + TIMESINCECOMPILE);
+  DEBUGSERIALPORT.println("Done.");
+#endif
 
-  Serial.print("\nSetting 1Hz Square Wave...");
+  DEBUGSERIALPORT.print("\nSetting 1Hz Square Wave...");
   rtc.writeSqwPinMode(PCF8523_SquareWave1HZ);
   Pcf8523SqwPinMode mode = rtc.readSqwPinMode();
-  Serial.println("Done.");
+  DEBUGSERIALPORT.println("Done.");
 
-  Serial.print("\nInitializing SHT31...");
+  DEBUGSERIALPORT.print("\nInitializing SHT31...");
   if (! sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
-    Serial.println("Couldn't find SHT31");
+    DEBUGSERIALPORT.println("Couldn't find SHT31");
     while (1) delay(1);
   }
-  Serial.println("Done.");
+  DEBUGSERIALPORT.println("Done.");
 
-  Serial.print("\nInitializing SD card...");
+  DEBUGSERIALPORT.print("\nInitializing SD card...");
   // Initialize at the highest speed supported by the board that is
   // not over 50 MHz. Try a lower speed if SPI errors occur.
   if (!sd.begin(SD_CS_PIN, SPI_HALF_SPEED)) {
-    Serial.println(F("SD card failed to initialize"));
+    DEBUGSERIALPORT.println(F("SD card failed to initialize"));
     sd.initErrorHalt();
   }
-  Serial.println("Done.");
+  DEBUGSERIALPORT.println("Done.");
 
-  Serial.print("\nOpening data file...");
+  DEBUGSERIALPORT.print("\nOpening data file...");
   // Find an unused file name.
   if (BASE_NAME_SIZE > 6) {
     error("FILE_BASE_NAME too long");
@@ -129,10 +140,22 @@ void setup() {
   if (!file.open(fileName, O_RDWR | O_CREAT | O_EXCL)) {
     error("file.open");
   }
-  Serial.println("Done.");
+  DEBUGSERIALPORT.println("Done.");
 
-  Serial.print(F("Logging to: "));
-  Serial.println(fileName);
+  DEBUGSERIALPORT.print(F("Logging to: "));
+  DEBUGSERIALPORT.println(fileName);
+
+  // Take the first sample at beginning of the minute
+  DEBUGSERIALPORT.println(F("Waiting to take first sample at beginning of minute..."));
+  byte currSec;
+  do {
+    currSec = DateTime(rtc.now()).second();
+#ifdef DEBUG
+    DEBUGSERIALPORT.print(F("Current second: "));
+    DEBUGSERIALPORT.println(currSec);
+#endif
+    delay(990);
+  } while (currSec != (60 - betweenSamples - 1) );
 
   // We're done with setup stuff, now start the interrupt loop.
   enableRTC();
@@ -153,28 +176,31 @@ void disableRTC() {
 void printStoredSamples() {
   file.rewind();
   while (file.available()) {
-    Serial.write(file.read());
+    DEBUGSERIALPORT.write(file.read());
   }
 }
 
 void showTime(DateTime now) {
-  Serial.print("The current time is: ");
-  Serial.print(now.year(), DEC);
-  Serial.print('/');
-  Serial.print(now.month(), DEC);
-  Serial.print('/');
-  Serial.print(now.day(), DEC);
-  Serial.print(" ");
-  Serial.print(now.hour(), DEC);
-  Serial.print(':');
-  Serial.print(now.minute(), DEC);
-  Serial.print(':');
-  Serial.print(now.second(), DEC);
-  Serial.print(" ");
-  Serial.println(now.unixtime());
+  DEBUGSERIALPORT.print("The current time is: ");
+  DEBUGSERIALPORT.print(now.year(), DEC);
+  DEBUGSERIALPORT.print('/');
+  DEBUGSERIALPORT.print(now.month(), DEC);
+  DEBUGSERIALPORT.print('/');
+  DEBUGSERIALPORT.print(now.day(), DEC);
+  DEBUGSERIALPORT.print(" ");
+  DEBUGSERIALPORT.print(now.hour(), DEC);
+  DEBUGSERIALPORT.print(':');
+  DEBUGSERIALPORT.print(now.minute(), DEC);
+  DEBUGSERIALPORT.print(':');
+  DEBUGSERIALPORT.print(now.second(), DEC);
+  DEBUGSERIALPORT.print(" ");
+  DEBUGSERIALPORT.println(now.unixtime());
 }
 
 float getVoltage() {
+  // Let the ADC settle
+  delay(1);
+
   // 2^10 = 1024 divisions, PIN_VBAT is connected to even divider
   // Input max 2.1v for fully charged 4.2v battery, use 2.4 reference
   return (analogRead(PIN_VBAT) * 2.4 / ADCDIVISIONS * 2);
@@ -187,21 +213,22 @@ void takeSample() {
   DateTime now = rtc.now();
   float v = getVoltage();
 
-  #ifdef DEBUG
+#ifdef DEBUG
+  DEBUGSERIALPORT.println();
   showTime(now);
   if (! isnan(t)) {  // check if 'is not a number'
-    Serial.print("Temp *C = "); Serial.println(t);
-  } else { 
-    Serial.println("Failed to read temperature");
+    DEBUGSERIALPORT.print("Temp *C = "); DEBUGSERIALPORT.println(t);
+  } else {
+    DEBUGSERIALPORT.println("Failed to read temperature");
   }
   if (! isnan(h)) {  // check if 'is not a number'
-    Serial.print("Hum. % = "); Serial.println(h);
-  } else { 
-    Serial.println("Failed to read humidity");
+    DEBUGSERIALPORT.print("Hum. % = "); DEBUGSERIALPORT.println(h);
+  } else {
+    DEBUGSERIALPORT.println("Failed to read humidity");
   }
-  Serial.print("Voltage is: ");
-  Serial.println(v);
-  #endif
+  DEBUGSERIALPORT.print("Voltage is: ");
+  DEBUGSERIALPORT.print(v);
+#endif
 
   // Write data to file. Start with unix time.
   file.print(now.unixtime());
@@ -215,18 +242,19 @@ void takeSample() {
   // End with a new line
   file.println();
 
-  // Write data to file. Start with unix time.
-  Serial.println();
-  Serial.print(now.unixtime());
-  Serial.print(',');
-  Serial.print(v);
-  Serial.print(',');
-  Serial.print(t);
-  Serial.print(',');
-  Serial.print(h);
+  // Write data to Serial. Start with unix time.
+  DEBUGSERIALPORT.println();
+  DEBUGSERIALPORT.print(now.unixtime());
+  DEBUGSERIALPORT.print(',');
+  DEBUGSERIALPORT.print(v);
+  DEBUGSERIALPORT.print(',');
+  DEBUGSERIALPORT.print(t);
+  DEBUGSERIALPORT.print(',');
+  DEBUGSERIALPORT.print(h);
 
   // End with a new line
-  Serial.println();
+  DEBUGSERIALPORT.println();
+  DEBUGSERIALPORT.println();
 
   // Force data to SD and update the directory entry to avoid data loss.
   if (!file.sync() || file.getWriteError()) {
@@ -242,12 +270,18 @@ void onAlarm() {
   if (counter == betweenSamples) {
     timeForSample = true;
     counter = 0;
-    digitalWrite(LED_BUILTIN, HIGH);   
+    digitalWrite(LED_BUILTIN, HIGH);
   } else {
     digitalWrite(LED_BUILTIN, LOW);
   }
-  Serial.print(counter);
-  Serial.print(' ');
+
+  // only works on 'Serial', not on 'Serial1'
+#ifdef DEBUG
+#ifndef USESERIAL1
+  DEBUGSERIALPORT.print(counter);
+  DEBUGSERIALPORT.print(' ');
+#endif
+#endif
 }
 
 void loop(void) {
@@ -258,5 +292,7 @@ void loop(void) {
 
     // don't do this forever, the time it takes to print will increase
     // printStoredSamples();
-  }  
+  } else {
+    delay(900); // delay for most of the wait between RTC signals to idle the processor
+  }
 }
