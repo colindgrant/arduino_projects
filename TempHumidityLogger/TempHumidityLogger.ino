@@ -17,7 +17,8 @@
 #include <RTClib.h>                     // PCF8523
 #include <SPI.h>                        // SD
 #include <SdFat.h>                      // Filesystem
-#include <Adafruit_SHT31.h>             // Temp and humidity
+#include <Adafruit_SHT31.h>             // Temperature and Humidity
+#include <Adafruit_BMP280.h>            // Barometric Pressure, Temperature, Altitude (note, relies on Adafruit Unified Sensor library)
 
 // Log file base name.  Must be six characters or less.
 #define FILE_BASE_NAME "Vent1_"
@@ -29,11 +30,12 @@
 // voltage reading ADC settings
 // https://learn.adafruit.com/bluefruit-nrf52-feather-learning-guide/nrf52-adc
 #define VREFMULTIPLIER AR_INTERNAL_2_4  // 0..2.4v
-#define ADCBITS 10                      // fast reads
+#define ADCBITS 10                      // fast reads, plenty of precision
 #define ADCDIVISIONS 1024               // 2^10 = 1024
 
-//#define DEBUG
-//#define USESERIAL1
+#define DEBUG
+#define USESERIAL1 // Plug in FTDI to GND and Tx to read status
+#define HASBMP // Adafruit bmp280 barometric pressure and temperature sensor, not on Feather M4 express
 
 #ifdef USESERIAL1
 #define DEBUGSERIALPORT Serial1
@@ -41,14 +43,19 @@
 #define DEBUGSERIALPORT Serial
 #endif
 
-#define SETDATETIMEANDSQUAREWAVE // Set the RTC time to system compile time, configure 1 Hz Square Wave. Runs about 12 seconds behind.
-#define TIMESINCECOMPILE 12 // Adjust for the lag between setting __TIME__ during compile, and actually setting time on the RTC 
+//#define SETDATETIMEANDSQUAREWAVE // Set the RTC time to system compile time, configure 1 Hz Square Wave. Runs about 12 seconds behind.
+#define TIMESINCECOMPILE 12 // Adjust for the lag between setting __TIME__ during compile, and actually setting time on the RTC
 
 // Set up RTC
 RTC_PCF8523 rtc;
 
 // Set up Temp and Humidity sensor
-Adafruit_SHT31 sht31 = Adafruit_SHT31();
+Adafruit_SHT31 sht31;
+
+#ifdef HASBMP
+// Set up Baro, Temp, and Altitude sensor
+Adafruit_BMP280 bmp280;
+#endif
 
 // File system object
 SdFat sd;
@@ -60,7 +67,7 @@ const uint8_t BASE_NAME_SIZE = sizeof(FILE_BASE_NAME) - 1;
 char fileName[13] = FILE_BASE_NAME "00.csv";
 
 // seconds between action
-const int betweenSamples = 5;
+const int betweenSamples = 30;
 
 // interrupt counter
 byte counter = 0;
@@ -71,18 +78,37 @@ bool timeForSample = false;
 
 void setup() {
 
-  // Open serial communications and wait for port to open:
-  DEBUGSERIALPORT.begin(115200);
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
-
   // Set up ADC for voltage reading
   analogReadResolution(ADCBITS);
   analogReference(VREFMULTIPLIER);
 
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(SQUARE_WAVE_SIGNAL_PIN, INPUT_PULLUP);
+
+  // beep beep to show that we're starting
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(100);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(100);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(100);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(100);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(100);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(1000);
+
+  // Open serial communications and wait for port to open:
+  DEBUGSERIALPORT.begin(115200);
+  delay (1000);
+
+  if (!Serial) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay (2000);
+  }
+  digitalWrite(LED_BUILTIN, LOW);
+
 
   DEBUGSERIALPORT.print("\nStarting RTC...");
   if (! rtc.begin()) {
@@ -99,12 +125,12 @@ void setup() {
   DEBUGSERIALPORT.print("\nSetting current time...");
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)).unixtime() + TIMESINCECOMPILE);
   DEBUGSERIALPORT.println("Done.");
-#endif
 
   DEBUGSERIALPORT.print("\nSetting 1Hz Square Wave...");
   rtc.writeSqwPinMode(PCF8523_SquareWave1HZ);
   Pcf8523SqwPinMode mode = rtc.readSqwPinMode();
   DEBUGSERIALPORT.println("Done.");
+#endif
 
   DEBUGSERIALPORT.print("\nInitializing SHT31...");
   if (! sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
@@ -112,6 +138,21 @@ void setup() {
     while (1) delay(1);
   }
   DEBUGSERIALPORT.println("Done.");
+
+#ifdef HASBMP
+  DEBUGSERIALPORT.print("\nInitializing BMP280...");
+  if (!bmp280.begin()) {
+    DEBUGSERIALPORT.println(F("Could not find a valid BMP280 sensor, check wiring!"));
+    while (1) delay(1);;
+  }
+  // From Adafruit example, where they say 'Default settings from datasheet'
+  bmp280.setSampling(Adafruit_BMP280::MODE_NORMAL,      /* Operating Mode */
+                     Adafruit_BMP280::SAMPLING_X1,      /* Temp. oversampling */
+                     Adafruit_BMP280::SAMPLING_X2,      /* Pressure oversampling */
+                     Adafruit_BMP280::FILTER_OFF,       /* Filtering */
+                     Adafruit_BMP280::STANDBY_MS_1000); /* Standby time (inconsequential in FORCED mode) */
+  DEBUGSERIALPORT.println("Done.");
+#endif
 
   DEBUGSERIALPORT.print("\nInitializing SD card...");
   // Initialize at the highest speed supported by the board that is
@@ -208,49 +249,68 @@ float getVoltage() {
 
 void takeSample() {
   // Here is where data collection and storage happens
-  float t = sht31.readTemperature();
-  float h = sht31.readHumidity();
-  DateTime now = rtc.now();
-  float v = getVoltage();
+  float temp_sht31 = sht31.readTemperature();
+  float relh_sht31 = sht31.readHumidity();
 
-#ifdef DEBUG
-  DEBUGSERIALPORT.println();
-  showTime(now);
-  if (! isnan(t)) {  // check if 'is not a number'
-    DEBUGSERIALPORT.print("Temp *C = "); DEBUGSERIALPORT.println(t);
-  } else {
-    DEBUGSERIALPORT.println("Failed to read temperature");
-  }
-  if (! isnan(h)) {  // check if 'is not a number'
-    DEBUGSERIALPORT.print("Hum. % = "); DEBUGSERIALPORT.println(h);
-  } else {
-    DEBUGSERIALPORT.println("Failed to read humidity");
-  }
-  DEBUGSERIALPORT.print("Voltage is: ");
-  DEBUGSERIALPORT.print(v);
+#ifdef HASBMP
+  float tmp_bmp280 = bmp280.readTemperature();
+  float bar_bmp280 = bmp280.readPressure();
+  float alt_bmp280 = bmp280.readAltitude(1013.25);
 #endif
+
+  DateTime now = rtc.now();
+  float voltage = getVoltage();
 
   // Write data to file. Start with unix time.
   file.print(now.unixtime());
   file.print(',');
-  file.print(v);
+  file.print(voltage);
   file.print(',');
-  file.print(t);
+  file.print(relh_sht31);
   file.print(',');
-  file.print(h);
+  file.print(temp_sht31);
+#ifdef HASBMP
+  file.print(',');
+  file.print(tmp_bmp280);
+  file.print(',');
+  file.print(bar_bmp280);
+  file.print(',');
+  file.print(alt_bmp280);
+#endif
+  file.println(); // End with a new line
 
-  // End with a new line
-  file.println();
 
-  // Write data to Serial. Start with unix time.
+#ifdef DEBUG
+  // Pretty print individual labeled measures
+  DEBUGSERIALPORT.println();
+  showTime(now);
+  DEBUGSERIALPORT.print("Battery     V = "); DEBUGSERIALPORT.println(voltage);
+  DEBUGSERIALPORT.print("SHT31  Hum  % = "); DEBUGSERIALPORT.println(relh_sht31);
+  DEBUGSERIALPORT.print("SHT31  Tmp *C = "); DEBUGSERIALPORT.println(temp_sht31);
+#ifdef HASBMP
+  DEBUGSERIALPORT.print("BMP280 Tmp *C = "); DEBUGSERIALPORT.println(tmp_bmp280);
+  DEBUGSERIALPORT.print("BMP280 Bar Pa = "); DEBUGSERIALPORT.println(bar_bmp280);
+  DEBUGSERIALPORT.print("BMP280 Alt  m = "); DEBUGSERIALPORT.println(alt_bmp280);
+#endif
+#endif
+
+  // Write data string to Serial. Start with unix time.
   DEBUGSERIALPORT.println();
   DEBUGSERIALPORT.print(now.unixtime());
   DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(v);
+  DEBUGSERIALPORT.print(voltage);
   DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(t);
+  DEBUGSERIALPORT.print(relh_sht31);
   DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(h);
+  DEBUGSERIALPORT.print(temp_sht31);
+#ifdef HASBMP
+  DEBUGSERIALPORT.print(',');
+  DEBUGSERIALPORT.print(tmp_bmp280);
+  DEBUGSERIALPORT.print(',');
+  DEBUGSERIALPORT.print(bar_bmp280);
+  DEBUGSERIALPORT.print(',');
+  DEBUGSERIALPORT.print(alt_bmp280);
+#endif
 
   // End with a new line
   DEBUGSERIALPORT.println();
