@@ -80,30 +80,9 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(TIMERINTERRUPTPIN, INPUT_PULLUP);
 
-  // beep beep to show that we're starting
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(100);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(100);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(100);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(100);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(100);
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(1000);
-
   // Open serial communications and wait for port to open:
   DEBUGSERIALPORT.begin(115200);
-  delay (1000);
-
-  if (!Serial) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay (2000);
-  }
-  digitalWrite(LED_BUILTIN, LOW);
-
+  while ( !Serial ) delay(10);   // for nrf52840 with native usb
 
   DEBUGSERIALPORT.print("\nStarting RTC...");
   if (! rtc.begin()) {
