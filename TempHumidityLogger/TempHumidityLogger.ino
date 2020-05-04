@@ -231,31 +231,24 @@ void takeSample() {
   float temp_sht31 = sht31.readTemperature();
   float relh_sht31 = sht31.readHumidity();
 
+  float tmp_bmp280 = 0;
+  float bar_bmp280 = 0;
+  float alt_bmp280 = 0;
 #ifdef HASBMP
-  float tmp_bmp280 = bmp280.readTemperature();
-  float bar_bmp280 = bmp280.readPressure();
-  float alt_bmp280 = bmp280.readAltitude(1013.25);
+  tmp_bmp280 = bmp280.readTemperature();
+  bar_bmp280 = bmp280.readPressure();
+  alt_bmp280 = bmp280.readAltitude(1013.25);
 #endif
 
   float voltage = getVoltage();
 
-  // Write data to file. Start with unix time.
-  file.print(now.unixtime());
-  file.print(',');
-  file.print(voltage);
-  file.print(',');
-  file.print(relh_sht31);
-  file.print(',');
-  file.print(temp_sht31);
-#ifdef HASBMP
-  file.print(',');
-  file.print(tmp_bmp280);
-  file.print(',');
-  file.print(bar_bmp280);
-  file.print(',');
-  file.print(alt_bmp280);
-#endif
-  file.println(); // End with a new line
+  // Char arrary for the CSV data string to be be stored on SD card
+  // Should only need 50 chars, but altitude can be negative, etc.
+  char csv[64];
+  sprintf(csv, "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", now.unixtime(), voltage, relh_sht31, temp_sht31, tmp_bmp280, bar_bmp280, alt_bmp280);
+
+  // Write data to SD file, note string already ends with a new line
+  file.print(csv);
 
 
 #ifdef DEBUG
@@ -265,33 +258,13 @@ void takeSample() {
   DEBUGSERIALPORT.print("Battery     V = "); DEBUGSERIALPORT.println(voltage);
   DEBUGSERIALPORT.print("SHT31  Hum  % = "); DEBUGSERIALPORT.println(relh_sht31);
   DEBUGSERIALPORT.print("SHT31  Tmp *C = "); DEBUGSERIALPORT.println(temp_sht31);
-#ifdef HASBMP
   DEBUGSERIALPORT.print("BMP280 Tmp *C = "); DEBUGSERIALPORT.println(tmp_bmp280);
   DEBUGSERIALPORT.print("BMP280 Bar Pa = "); DEBUGSERIALPORT.println(bar_bmp280);
   DEBUGSERIALPORT.print("BMP280 Alt  m = "); DEBUGSERIALPORT.println(alt_bmp280);
 #endif
-#endif
 
-  // Write data string to Serial. Start with unix time.
-  DEBUGSERIALPORT.println();
-  DEBUGSERIALPORT.print(now.unixtime());
-  DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(voltage);
-  DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(relh_sht31);
-  DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(temp_sht31);
-#ifdef HASBMP
-  DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(tmp_bmp280);
-  DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(bar_bmp280);
-  DEBUGSERIALPORT.print(',');
-  DEBUGSERIALPORT.print(alt_bmp280);
-#endif
-
-  // End with a new line
-  DEBUGSERIALPORT.println();
+  // Write data string to Serial
+  DEBUGSERIALPORT.println(csv);
 
   // Force data to SD and update the directory entry to avoid data loss.
   if (!file.sync() || file.getWriteError()) {
