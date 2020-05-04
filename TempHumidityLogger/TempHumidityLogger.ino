@@ -10,7 +10,6 @@
   CardInfo
   BlinkWithoutDelay
 
-
 */
 
 
@@ -23,13 +22,16 @@
 // Log file base name.  Must be six characters or less.
 #define FILE_BASE_NAME "Vent1_"
 
-#define SQUARE_WAVE_SIGNAL_PIN 5        // PCF8523
+// seconds between collecting samples
+#define SECONDSBETWEENSAMPLES 30
+
+#define TIMERINTERRUPTPIN 5        // PCF8523
 #define SD_CS_PIN 10
 #define error(msg) sd.errorHalt(F(msg))
 
 // voltage reading ADC settings
 // https://learn.adafruit.com/bluefruit-nrf52-feather-learning-guide/nrf52-adc
-#define VREFMULTIPLIER AR_INTERNAL_2_4  // 0..2.4v
+#define VREFMULTIPLIER AR_INTERNAL_2_4  // 0..2.4v at divider, so 4.8v capable
 #define ADCBITS 10                      // fast reads, plenty of precision
 #define ADCDIVISIONS 1024               // 2^10 = 1024
 
@@ -43,7 +45,7 @@
 #define DEBUGSERIALPORT Serial
 #endif
 
-//#define SETDATETIMEANDSQUAREWAVE // Set the RTC time to system compile time, configure 1 Hz Square Wave. Runs about 12 seconds behind.
+#define SETDATETIME // Set the RTC time to system compile time, configure 1 Hz Square Wave. Runs about 12 seconds behind.
 #define TIMESINCECOMPILE 12 // Adjust for the lag between setting __TIME__ during compile, and actually setting time on the RTC
 
 // Set up RTC
@@ -66,15 +68,8 @@ SdFile file;
 const uint8_t BASE_NAME_SIZE = sizeof(FILE_BASE_NAME) - 1;
 char fileName[13] = FILE_BASE_NAME "00.csv";
 
-// seconds between action
-const int betweenSamples = 30;
-
-// interrupt counter
-byte counter = 0;
-
 // whether it is time to take a new sample
 bool timeForSample = false;
-
 
 void setup() {
 
@@ -83,7 +78,7 @@ void setup() {
   analogReference(VREFMULTIPLIER);
 
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(SQUARE_WAVE_SIGNAL_PIN, INPUT_PULLUP);
+  pinMode(TIMERINTERRUPTPIN, INPUT_PULLUP);
 
   // beep beep to show that we're starting
   digitalWrite(LED_BUILTIN, HIGH);
@@ -121,14 +116,9 @@ void setup() {
     DEBUGSERIALPORT.println("RTC is NOT running!");
   }
 
-#ifdef SETDATETIMEANDSQUAREWAVE
+#ifdef SETDATETIME
   DEBUGSERIALPORT.print("\nSetting current time...");
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)).unixtime() + TIMESINCECOMPILE);
-  DEBUGSERIALPORT.println("Done.");
-
-  DEBUGSERIALPORT.print("\nSetting 1Hz Square Wave...");
-  rtc.writeSqwPinMode(PCF8523_SquareWave1HZ);
-  Pcf8523SqwPinMode mode = rtc.readSqwPinMode();
   DEBUGSERIALPORT.println("Done.");
 #endif
 
@@ -186,32 +176,40 @@ void setup() {
   DEBUGSERIALPORT.print(F("Logging to: "));
   DEBUGSERIALPORT.println(fileName);
 
-  // Take the first sample at beginning of the minute
-  DEBUGSERIALPORT.println(F("Waiting to take first sample at beginning of minute..."));
-  byte currSec;
-  do {
-    currSec = DateTime(rtc.now()).second();
-#ifdef DEBUG
-    DEBUGSERIALPORT.print(F("Current second: "));
-    DEBUGSERIALPORT.println(currSec);
-#endif
-    delay(990);
-  } while (currSec != (60 - betweenSamples - 1) );
-
   // We're done with setup stuff, now start the interrupt loop.
   enableRTC();
 
 }
 
 void enableRTC() {
-  // Square wave input has pullup, when RTC pulls from high to low,
-  // call onAlarm(), which will determine if it's time to take a sample.
-  // TODO: make this based on an actual alarm signal (>1s) from RTC.
-  attachInterrupt(SQUARE_WAVE_SIGNAL_PIN, onAlarm, FALLING);
+  // Take the first sample at beginning of the minute
+  DEBUGSERIALPORT.println(F("\nConfiguring countdown to take first sample at beginning of minute..."));
+  byte currSec;
+  DateTime now;
+  do {
+    now = rtc.now();
+    currSec = now.second();
+#ifdef DEBUG
+    DEBUGSERIALPORT.print(F("Current second: "));
+    DEBUGSERIALPORT.println(currSec);
+#endif
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(500);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(490);
+  } while (currSec != (59 - SECONDSBETWEENSAMPLES));
+
+  // Enable and attach to countdown timer, each time countdown is over,
+  // call countdownOver(), which will take a sample
+  rtc.enableCountdownTimer(PCF8523_FrequencySecond, SECONDSBETWEENSAMPLES);
+  attachInterrupt(TIMERINTERRUPTPIN, countdownOver, FALLING);
+  DEBUGSERIALPORT.println("\nCountdown timer enabled.");
+  showTime(now);
 }
 
 void disableRTC() {
-  detachInterrupt(SQUARE_WAVE_SIGNAL_PIN);
+  rtc.disableCountdownTimer();
+  detachInterrupt(TIMERINTERRUPTPIN);
 }
 
 void printStoredSamples() {
@@ -249,6 +247,8 @@ float getVoltage() {
 
 void takeSample() {
   // Here is where data collection and storage happens
+  DateTime now = rtc.now();
+
   float temp_sht31 = sht31.readTemperature();
   float relh_sht31 = sht31.readHumidity();
 
@@ -258,7 +258,6 @@ void takeSample() {
   float alt_bmp280 = bmp280.readAltitude(1013.25);
 #endif
 
-  DateTime now = rtc.now();
   float voltage = getVoltage();
 
   // Write data to file. Start with unix time.
@@ -314,7 +313,6 @@ void takeSample() {
 
   // End with a new line
   DEBUGSERIALPORT.println();
-  DEBUGSERIALPORT.println();
 
   // Force data to SD and update the directory entry to avoid data loss.
   if (!file.sync() || file.getWriteError()) {
@@ -325,34 +323,27 @@ void takeSample() {
   timeForSample = false;
 }
 
-void onAlarm() {
-  ++counter;
-  if (counter == betweenSamples) {
-    timeForSample = true;
-    counter = 0;
-    digitalWrite(LED_BUILTIN, HIGH);
-  } else {
-    digitalWrite(LED_BUILTIN, LOW);
-  }
-
-  // only works on 'Serial', not on 'Serial1'
-#ifdef DEBUG
-#ifndef USESERIAL1
-  DEBUGSERIALPORT.print(counter);
-  DEBUGSERIALPORT.print(' ');
-#endif
-#endif
+void countdownOver() {
+  timeForSample = true;
 }
 
 void loop(void) {
   // Temp sensor uses I2C which doesn't work reliably during an interrupt,
   // so initiate sampling here, immediately after the last interrupt.
   if (timeForSample) {
+    #ifdef DEBUG
+    DEBUGSERIALPORT.println("Taking sample");
+    #endif
+    // Built-in LED on to indicate sampling
+    digitalWrite(LED_BUILTIN, HIGH);
     takeSample();
+    delay(1000);
+    digitalWrite(LED_BUILTIN, LOW);
 
+    #ifdef DEBUG
     // don't do this forever, the time it takes to print will increase
-    // printStoredSamples();
-  } else {
-    delay(900); // delay for most of the wait between RTC signals to idle the processor
+    printStoredSamples();
+    #endif
+
   }
 }
