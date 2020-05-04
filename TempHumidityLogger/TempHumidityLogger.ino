@@ -37,16 +37,16 @@
 
 #define DEBUG
 #define USESERIAL1 // Plug in FTDI to GND and Tx to read status
-#define HASBMP // Adafruit bmp280 barometric pressure and temperature sensor, not on Feather M4 express
+#define HASBMP // Adafruit bmp280 on Feather Sense not on Feather M4 express
 
 #ifdef USESERIAL1
-#define DEBUGSERIALPORT Serial1
+#define MYSERIAL Serial1
 #else
-#define DEBUGSERIALPORT Serial
+#define MYSERIAL Serial
 #endif
 
-#define SETDATETIME // Set the RTC time to system compile time, configure 1 Hz Square Wave. Runs about 12 seconds behind.
-#define TIMESINCECOMPILE 12 // Adjust for the lag between setting __TIME__ during compile, and actually setting time on the RTC
+#define SETDATETIME   // Set the RTC time to system compile time
+#define TIMESINCECOMPILE 12   // Lag between compile __TIME__, and setting RTC
 
 // Set up RTC
 RTC_PCF8523 rtc;
@@ -81,37 +81,39 @@ void setup() {
   pinMode(TIMERINTERRUPTPIN, INPUT_PULLUP);
 
   // Open serial communications and wait for port to open:
-  DEBUGSERIALPORT.begin(115200);
-  while ( !Serial ) delay(10);   // for nrf52840 with native usb
+  MYSERIAL.begin(115200);
+  while (!Serial) {
+    delay(10);   // for nrf52840 with native usb
+  }
 
-  DEBUGSERIALPORT.print("\nStarting RTC...");
+  MYSERIAL.print(F("\nStarting RTC..."));
   if (! rtc.begin()) {
-    DEBUGSERIALPORT.println("Couldn't find RTC");
+    MYSERIAL.println(F("Couldn't find RTC"));
     while (1);
   }
-  DEBUGSERIALPORT.println("Done.");
+  MYSERIAL.println(F("Done."));
 
   if (! rtc.initialized()) {
-    DEBUGSERIALPORT.println("RTC is NOT running!");
+    MYSERIAL.println(F("RTC is NOT running!"));
   }
 
 #ifdef SETDATETIME
-  DEBUGSERIALPORT.print("\nSetting current time...");
+  MYSERIAL.print(F("\nSetting current time..."));
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)).unixtime() + TIMESINCECOMPILE);
-  DEBUGSERIALPORT.println("Done.");
+  MYSERIAL.println(F("Done."));
 #endif
 
-  DEBUGSERIALPORT.print("\nInitializing SHT31...");
+  MYSERIAL.print(F("\nInitializing SHT31..."));
   if (! sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
-    DEBUGSERIALPORT.println("Couldn't find SHT31");
+    MYSERIAL.println(F("Couldn't find SHT31"));
     while (1) delay(1);
   }
-  DEBUGSERIALPORT.println("Done.");
+  MYSERIAL.println(F("Done."));
 
 #ifdef HASBMP
-  DEBUGSERIALPORT.print("\nInitializing BMP280...");
+  MYSERIAL.print(F("\nInitializing BMP280..."));
   if (!bmp280.begin()) {
-    DEBUGSERIALPORT.println(F("Could not find a valid BMP280 sensor, check wiring!"));
+    MYSERIAL.println(F("Could not find a valid BMP280 sensor, check wiring!"));
     while (1) delay(1);;
   }
   // From Adafruit example, where they say 'Default settings from datasheet'
@@ -120,19 +122,19 @@ void setup() {
                      Adafruit_BMP280::SAMPLING_X2,      /* Pressure oversampling */
                      Adafruit_BMP280::FILTER_OFF,       /* Filtering */
                      Adafruit_BMP280::STANDBY_MS_1000); /* Standby time (inconsequential in FORCED mode) */
-  DEBUGSERIALPORT.println("Done.");
+  MYSERIAL.println(F("Done."));
 #endif
 
-  DEBUGSERIALPORT.print("\nInitializing SD card...");
+  MYSERIAL.print(F("\nInitializing SD card..."));
   // Initialize at the highest speed supported by the board that is
   // not over 50 MHz. Try a lower speed if SPI errors occur.
   if (!sd.begin(SD_CS_PIN, SPI_HALF_SPEED)) {
-    DEBUGSERIALPORT.println(F("SD card failed to initialize"));
+    MYSERIAL.println(F("SD card failed to initialize"));
     sd.initErrorHalt();
   }
-  DEBUGSERIALPORT.println("Done.");
+  MYSERIAL.println(F("Done."));
 
-  DEBUGSERIALPORT.print("\nOpening data file...");
+  MYSERIAL.print(F("\nOpening data file..."));
   // Find an unused file name.
   if (BASE_NAME_SIZE > 6) {
     error("FILE_BASE_NAME too long");
@@ -150,10 +152,10 @@ void setup() {
   if (!file.open(fileName, O_RDWR | O_CREAT | O_EXCL)) {
     error("file.open");
   }
-  DEBUGSERIALPORT.println("Done.");
+  MYSERIAL.println(F("Done."));
 
-  DEBUGSERIALPORT.print(F("Logging to: "));
-  DEBUGSERIALPORT.println(fileName);
+  MYSERIAL.print(F("Logging to: "));
+  MYSERIAL.println(fileName);
 
   // We're done with setup stuff, now start the interrupt loop.
   enableRTC();
@@ -162,15 +164,15 @@ void setup() {
 
 void enableRTC() {
   // Take the first sample at beginning of the minute
-  DEBUGSERIALPORT.println(F("\nConfiguring countdown to take first sample at beginning of minute..."));
+  MYSERIAL.println(F("\nConfiguring countdown to take first sample at beginning of minute..."));
   byte currSec;
   DateTime now;
   do {
     now = rtc.now();
     currSec = now.second();
 #ifdef DEBUG
-    DEBUGSERIALPORT.print(F("Current second: "));
-    DEBUGSERIALPORT.println(currSec);
+    MYSERIAL.print(F("Current second: "));
+    MYSERIAL.println(currSec);
 #endif
     digitalWrite(LED_BUILTIN, HIGH);
     delay(500);
@@ -182,7 +184,7 @@ void enableRTC() {
   // call countdownOver(), which will take a sample
   rtc.enableCountdownTimer(PCF8523_FrequencySecond, SECONDSBETWEENSAMPLES);
   attachInterrupt(TIMERINTERRUPTPIN, countdownOver, FALLING);
-  DEBUGSERIALPORT.println("\nCountdown timer enabled.");
+  MYSERIAL.println(F("\nCountdown timer enabled."));
   showTime(now);
 }
 
@@ -194,25 +196,25 @@ void disableRTC() {
 void printStoredSamples() {
   file.rewind();
   while (file.available()) {
-    DEBUGSERIALPORT.write(file.read());
+    MYSERIAL.write(file.read());
   }
 }
 
 void showTime(DateTime now) {
-  DEBUGSERIALPORT.print("The current time is: ");
-  DEBUGSERIALPORT.print(now.year(), DEC);
-  DEBUGSERIALPORT.print('/');
-  DEBUGSERIALPORT.print(now.month(), DEC);
-  DEBUGSERIALPORT.print('/');
-  DEBUGSERIALPORT.print(now.day(), DEC);
-  DEBUGSERIALPORT.print(" ");
-  DEBUGSERIALPORT.print(now.hour(), DEC);
-  DEBUGSERIALPORT.print(':');
-  DEBUGSERIALPORT.print(now.minute(), DEC);
-  DEBUGSERIALPORT.print(':');
-  DEBUGSERIALPORT.print(now.second(), DEC);
-  DEBUGSERIALPORT.print(" ");
-  DEBUGSERIALPORT.println(now.unixtime());
+  MYSERIAL.print(F("The current time is: "));
+  MYSERIAL.print(now.year(), DEC);
+  MYSERIAL.print('/');
+  MYSERIAL.print(now.month(), DEC);
+  MYSERIAL.print('/');
+  MYSERIAL.print(now.day(), DEC);
+  MYSERIAL.print(' ');
+  MYSERIAL.print(now.hour(), DEC);
+  MYSERIAL.print(':');
+  MYSERIAL.print(now.minute(), DEC);
+  MYSERIAL.print(':');
+  MYSERIAL.print(now.second(), DEC);
+  MYSERIAL.print(' ');
+  MYSERIAL.println(now.unixtime());
 }
 
 float getVoltage() {
@@ -253,18 +255,18 @@ void takeSample() {
 
 #ifdef DEBUG
   // Pretty print individual labeled measures
-  DEBUGSERIALPORT.println();
+  MYSERIAL.println();
   showTime(now);
-  DEBUGSERIALPORT.print("Battery     V = "); DEBUGSERIALPORT.println(voltage);
-  DEBUGSERIALPORT.print("SHT31  Hum  % = "); DEBUGSERIALPORT.println(relh_sht31);
-  DEBUGSERIALPORT.print("SHT31  Tmp *C = "); DEBUGSERIALPORT.println(temp_sht31);
-  DEBUGSERIALPORT.print("BMP280 Tmp *C = "); DEBUGSERIALPORT.println(tmp_bmp280);
-  DEBUGSERIALPORT.print("BMP280 Bar Pa = "); DEBUGSERIALPORT.println(bar_bmp280);
-  DEBUGSERIALPORT.print("BMP280 Alt  m = "); DEBUGSERIALPORT.println(alt_bmp280);
+  MYSERIAL.print(F("Battery     V = ")); MYSERIAL.println(voltage);
+  MYSERIAL.print(F("SHT31  Hum  % = ")); MYSERIAL.println(relh_sht31);
+  MYSERIAL.print(F("SHT31  Tmp *C = ")); MYSERIAL.println(temp_sht31);
+  MYSERIAL.print(F("BMP280 Tmp *C = ")); MYSERIAL.println(tmp_bmp280);
+  MYSERIAL.print(F("BMP280 Bar Pa = ")); MYSERIAL.println(bar_bmp280);
+  MYSERIAL.print(F("BMP280 Alt  m = ")); MYSERIAL.println(alt_bmp280);
 #endif
 
   // Write data string to Serial
-  DEBUGSERIALPORT.println(csv);
+  MYSERIAL.println(csv);
 
   // Force data to SD and update the directory entry to avoid data loss.
   if (!file.sync() || file.getWriteError()) {
@@ -284,7 +286,7 @@ void loop(void) {
   // so initiate sampling here, immediately after the last interrupt.
   if (timeForSample) {
     #ifdef DEBUG
-    DEBUGSERIALPORT.println("Taking sample");
+    MYSERIAL.println(F("Taking sample"));
     #endif
     // Built-in LED on to indicate sampling
     digitalWrite(LED_BUILTIN, HIGH);
