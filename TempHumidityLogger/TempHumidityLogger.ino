@@ -12,12 +12,11 @@
 
 */
 
-
-#include <RTClib.h>                     // PCF8523
-#include <SPI.h>                        // SD
-#include <SdFat.h>                      // Filesystem
-#include <Adafruit_SHT31.h>             // Temperature and Humidity
-#include <Adafruit_BMP280.h>            // Barometric Pressure, Temperature, Altitude (note, relies on Adafruit Unified Sensor library)
+#include <Adafruit_BMP280.h> // Barometric Pressure, Temperature, Altitude (note, relies on Adafruit Unified Sensor library)
+#include <Adafruit_SHT31.h>  // Temperature and Humidity
+#include <RTClib.h>          // PCF8523
+#include <SPI.h>             // SD
+#include <SdFat.h>           // Filesystem
 
 // Log file base name.  Must be six characters or less.
 #define FILE_BASE_NAME "Vent1_"
@@ -25,19 +24,19 @@
 // seconds between collecting samples
 #define SECONDSBETWEENSAMPLES 30
 
-#define TIMERINTERRUPTPIN 5        // PCF8523
+#define TIMERINTERRUPTPIN 5 // PCF8523
 #define SD_CS_PIN 10
 #define error(msg) sd.errorHalt(F(msg))
 
 // voltage reading ADC settings
 // https://learn.adafruit.com/bluefruit-nrf52-feather-learning-guide/nrf52-adc
-#define VREFMULTIPLIER AR_INTERNAL_2_4  // 0..2.4v at divider, so 4.8v capable
-#define ADCBITS 10                      // fast reads, plenty of precision
-#define ADCDIVISIONS 1024               // 2^10 = 1024
+#define VREFMULTIPLIER AR_INTERNAL_2_4 // 0..2.4v at divider, so 4.8v capable
+#define ADCBITS 10                     // fast reads, plenty of precision
+#define ADCDIVISIONS 1024              // 2^10 = 1024
 
 #define DEBUG
 #define USESERIAL1 // Plug in FTDI to GND and Tx to read status
-#define HASBMP // Adafruit bmp280 on Feather Sense not on Feather M4 express
+#define HASBMP     // Adafruit bmp280 on Feather Sense not on Feather M4 express
 
 #ifdef USESERIAL1
 #define MYSERIAL Serial1
@@ -45,8 +44,8 @@
 #define MYSERIAL Serial
 #endif
 
-#define SETDATETIME   // Set the RTC time to system compile time
-#define TIMESINCECOMPILE 12   // Lag between compile __TIME__, and setting RTC
+#define SETDATETIME         // Set the RTC time to system compile time
+#define TIMESINCECOMPILE 12 // Lag between compile __TIME__, and setting RTC
 
 // Set up RTC
 RTC_PCF8523 rtc;
@@ -82,19 +81,18 @@ void setup() {
 
   // Open serial communications and wait for port to open:
   MYSERIAL.begin(115200);
-  while (!Serial) {
-    delay(10);   // for nrf52840 with native usb
-  }
+  while (!Serial) delay(10); // for nrf52840 with native usb
 
   MYSERIAL.print(F("\nStarting RTC..."));
-  if (! rtc.begin()) {
+  if (!rtc.begin()) {
     MYSERIAL.println(F("Couldn't find RTC"));
     while (1);
   }
   MYSERIAL.println(F("Done."));
 
-  if (! rtc.initialized()) {
-    MYSERIAL.println(F("RTC is NOT running!"));
+  if (!rtc.initialized()) {
+    MYSERIAL.println(F("RTC is NOT initialized!"));
+    while (1);
   }
 
 #ifdef SETDATETIME
@@ -104,9 +102,9 @@ void setup() {
 #endif
 
   MYSERIAL.print(F("\nInitializing SHT31..."));
-  if (! sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
+  if (!sht31.begin(0x44)) { // Set to 0x45 for alternate i2c addr
     MYSERIAL.println(F("Couldn't find SHT31"));
-    while (1) delay(1);
+    while (1);
   }
   MYSERIAL.println(F("Done."));
 
@@ -114,14 +112,16 @@ void setup() {
   MYSERIAL.print(F("\nInitializing BMP280..."));
   if (!bmp280.begin()) {
     MYSERIAL.println(F("Could not find a valid BMP280 sensor, check wiring!"));
-    while (1) delay(1);;
+    while (1);
   }
   // From Adafruit example, where they say 'Default settings from datasheet'
-  bmp280.setSampling(Adafruit_BMP280::MODE_NORMAL,      /* Operating Mode */
-                     Adafruit_BMP280::SAMPLING_X1,      /* Temp. oversampling */
-                     Adafruit_BMP280::SAMPLING_X2,      /* Pressure oversampling */
-                     Adafruit_BMP280::FILTER_OFF,       /* Filtering */
-                     Adafruit_BMP280::STANDBY_MS_1000); /* Standby time (inconsequential in FORCED mode) */
+  bmp280.setSampling(
+      Adafruit_BMP280::MODE_NORMAL,      /* Operating Mode */
+      Adafruit_BMP280::SAMPLING_X1,      /* Temp. oversampling */
+      Adafruit_BMP280::SAMPLING_X2,      /* Pressure oversampling */
+      Adafruit_BMP280::FILTER_OFF,       /* Filtering */
+      Adafruit_BMP280::STANDBY_MS_1000); /* Standby time (inconsequential in
+                                            FORCED mode) */
   MYSERIAL.println(F("Done."));
 #endif
 
@@ -159,12 +159,12 @@ void setup() {
 
   // We're done with setup stuff, now start the interrupt loop.
   enableRTC();
-
 }
 
 void enableRTC() {
   // Take the first sample at beginning of the minute
-  MYSERIAL.println(F("\nConfiguring countdown to take first sample at beginning of minute..."));
+  MYSERIAL.println(F("\nConfiguring countdown to take first sample at "
+                     "beginning of minute..."));
   byte currSec;
   DateTime now;
   do {
@@ -247,11 +247,11 @@ void takeSample() {
   // Char arrary for the CSV data string to be be stored on SD card
   // Should only need 50 chars, but altitude can be negative, etc.
   char csv[64];
-  sprintf(csv, "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", now.unixtime(), voltage, relh_sht31, temp_sht31, tmp_bmp280, bar_bmp280, alt_bmp280);
+  sprintf(csv, "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", now.unixtime(), voltage,
+          relh_sht31, temp_sht31, tmp_bmp280, bar_bmp280, alt_bmp280);
 
   // Write data to SD file, note string already ends with a new line
   file.print(csv);
-
 
 #ifdef DEBUG
   // Pretty print individual labeled measures
@@ -278,6 +278,8 @@ void takeSample() {
 }
 
 void countdownOver() {
+  // Time froze in here, do not try to do anything complex
+  // Set flag here to act on in loop
   timeForSample = true;
 }
 
@@ -285,19 +287,18 @@ void loop(void) {
   // Temp sensor uses I2C which doesn't work reliably during an interrupt,
   // so initiate sampling here, immediately after the last interrupt.
   if (timeForSample) {
-    #ifdef DEBUG
+#ifdef DEBUG
     MYSERIAL.println(F("Taking sample"));
-    #endif
+#endif
     // Built-in LED on to indicate sampling
     digitalWrite(LED_BUILTIN, HIGH);
     takeSample();
     delay(1000);
     digitalWrite(LED_BUILTIN, LOW);
 
-    #ifdef DEBUG
+#ifdef DEBUG
     // don't do this forever, the time it takes to print will increase
     printStoredSamples();
-    #endif
-
+#endif
   }
 }
