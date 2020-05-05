@@ -18,34 +18,45 @@
 #include <SPI.h>             // SD
 #include <SdFat.h>           // Filesystem
 
-// Log file base name.  Must be six characters or less.
-#define FILE_BASE_NAME "Vent1_"
 
-// seconds between collecting samples
-#define SECONDSBETWEENSAMPLES 30
+////////////////////////////////////////////////////////////////////////////////
+// Dev selections for switching between board types, etc.
+//
+#define FILE_BASE_NAME "Vent1_" // log file, six characters or less
+#define SECONDSBETWEENSAMPLES 30 // seconds between collecting samples
+#define USESERIAL1 // Plug in FTDI to GND and Tx to read status
+// #define SETDATETIME // Set the RTC time to system compile time
+//
+////////////////////////////////////////////////////////////////////////////////
 
-#define TIMERINTERRUPTPIN 5 // PCF8523
-#define SD_CS_PIN 10
+
+// Things that shouldn't have to be messed with
+#define TIMERINTERRUPTPIN 5 // PCF8523 INT/SQW, common Feather input
+#define SD_CS_PIN 10 // Feather standard
 #define error(msg) sd.errorHalt(F(msg))
 
-// voltage reading ADC settings
-// https://learn.adafruit.com/bluefruit-nrf52-feather-learning-guide/nrf52-adc
-#define VREFMULTIPLIER AR_INTERNAL_2_4 // 0..2.4v at divider, so 4.8v capable
-#define ADCBITS 10                     // fast reads, plenty of precision
-#define ADCDIVISIONS 1024              // 2^10 = 1024
-
-#define DEBUG
-#define USESERIAL1 // Plug in FTDI to GND and Tx to read status
-#define HASBMP     // Adafruit bmp280 on Feather Sense not on Feather M4 express
-
-#ifdef USESERIAL1
-#define MYSERIAL Serial1
-#else
-#define MYSERIAL Serial
+#ifdef ARDUINO_FEATHER_M4 // Has SHT31 backpack
+#define BOARDNAME "Adafruit Feather M4 Express"
+#define TIMESINCECOMPILE 8 // Lag between compile __TIME__, and setting RTC
+#define VREFMULTIPLIER AR_INTERNAL2V4 // 0..2.4v at divider, so 4.8v capable
+#define PIN_VBAT A6
 #endif
 
-#define SETDATETIME         // Set the RTC time to system compile time
+#ifdef ARDUINO_NRF52840_FEATHER_SENSE
+#define BOARDNAME "Adafruit Feather nRF52840 Sense"
 #define TIMESINCECOMPILE 12 // Lag between compile __TIME__, and setting RTC
+#define HASBMP // Adafruit bmp280 on Feather Sense not on Feather M4 express
+#define VREFMULTIPLIER AR_INTERNAL_2_4 // 0..2.4v at divider, so 4.8v capable
+#endif
+
+#define ADCBITS 10 // fast reads, plenty of precision
+#define ADCDIVISIONS 1024 // 2^10 = 1024
+
+#ifdef USESERIAL1
+#define MYSERIAL Serial1 // FTDI on Tx Rx pins
+#else
+#define MYSERIAL Serial  // Native USB
+#endif
 
 // Set up RTC
 RTC_PCF8523 rtc;
@@ -81,7 +92,10 @@ void setup() {
 
   // Open serial communications and wait for port to open:
   MYSERIAL.begin(115200);
-  while (!Serial) delay(10); // for nrf52840 with native usb
+  if (!Serial) delay(500); // for nrf52840 with native usb
+
+  MYSERIAL.print("Board type: ");
+  MYSERIAL.println(BOARDNAME);
 
   MYSERIAL.print(F("\nStarting RTC..."));
   if (!rtc.begin()) {
@@ -98,6 +112,7 @@ void setup() {
 #ifdef SETDATETIME
   MYSERIAL.print(F("\nSetting current time..."));
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)).unixtime() + TIMESINCECOMPILE);
+  rtc.deconfigureAllTimers();
   MYSERIAL.println(F("Done."));
 #endif
 
