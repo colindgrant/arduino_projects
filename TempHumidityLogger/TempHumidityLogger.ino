@@ -25,7 +25,8 @@
 #define FILE_BASE_NAME "Vent1_" // log file, six characters or less
 #define SECONDSBETWEENSAMPLES 30 // seconds between collecting samples
 #define USESERIAL1 // Plug in FTDI to GND and Tx to read status
-// #define SETDATETIME // Set the RTC time to system compile time
+//#define SETDATETIME // Set the RTC time to system compile time
+//#define DEBUG
 //
 ////////////////////////////////////////////////////////////////////////////////
 
