@@ -182,7 +182,8 @@ void enableRTC() {
   MYSERIAL.println(F("\nConfiguring countdown to take first sample at "
                      "beginning of minute..."));
   byte currSec;
-  DateTime now;
+  DateTime now = rtc.now();
+  showTime(now);
   do {
     now = rtc.now();
     currSec = now.second();
