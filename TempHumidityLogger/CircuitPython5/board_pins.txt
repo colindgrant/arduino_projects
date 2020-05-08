@@ -1,0 +1,4 @@
+feather_nrf52840_sense:
+>>> dir(board)
+['__class__', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'ACCELEROMETER_GYRO_INTERRUPT', 'AREF', 'BATTERY', 'BLUE_LED', 'D10', 'D11', 'D12', 'D13', 'D2', 'D3', 'D5', 'D6', 'D9', 'I2C', 'L', 'MICROPHONE_CLOCK', 'MICROPHONE_DATA', 'MISO', 'MOSI', 'NEOPIXEL', 'NFC1', 'NFC2', 'PROXIMITY_LIGHT_INTERRUPT', 'RED_LED', 'RX', 'SCK', 'SCL', 'SDA', 'SPI', 'SWITCH', 'TX', 'UART', 'VOLTAGE_MONITOR']
+>>>
