@@ -33,7 +33,7 @@ BLEBas  blebas;  // battery
 ////////////////////////////////////////////////////////////////////////////////
 // Dev selections for switching between board types, etc.
 //
-#define FILE_BASE_NAME "Vent1_" // log file, six characters or less
+#define SENSOR_NAME "Vent1" // used for log filename, five characters or less
 #define SECONDSBETWEENSAMPLES 30 // seconds between collecting samples
 #define USESERIAL1 // Plug in FTDI to GND and Tx to read status
 //#define SETDATETIME // Set the RTC time to system compile time
@@ -46,6 +46,7 @@ BLEBas  blebas;  // battery
 #define TIMERINTERRUPTPIN 5 // PCF8523 INT/SQW, common Feather input
 #define SD_CS_PIN 10 // Feather standard
 #define error(msg) sd.errorHalt(F(msg))
+#define FILE_BASE_NAME SENSOR_NAME "_"
 
 #ifdef ARDUINO_FEATHER_M4 // Has SHT31 backpack
 #define BOARDNAME "Adafruit Feather M4 Express"
@@ -56,7 +57,7 @@ BLEBas  blebas;  // battery
 
 #ifdef ARDUINO_NRF52840_FEATHER_SENSE
 #define BOARDNAME "Adafruit Feather nRF52840 Sense"
-#define TIMESINCECOMPILE 12 // Lag between compile __TIME__, and setting RTC
+#define TIMESINCECOMPILE 13 // Lag between compile __TIME__, and setting RTC
 #define HASBMP // Adafruit bmp280 on Feather Sense not on Feather M4 express
 #define VREFMULTIPLIER AR_INTERNAL_2_4 // 0..2.4v at divider, so 4.8v capable
 #endif
@@ -118,7 +119,7 @@ void setup() {
 
   if (!rtc.initialized()) {
     MYSERIAL.println(F("RTC is NOT initialized!"));
-    while (1);
+    // while (1); // this will block the ability to set time after power off
   }
 
 #ifdef SETDATETIME
@@ -196,7 +197,7 @@ void setup() {
 
   Bluefruit.begin();
   Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
-  Bluefruit.setName("Bluefruit52");
+  Bluefruit.setName(SENSOR_NAME);
   //Bluefruit.setName(getMcuUniqueID()); // useful testing with multiple central connections
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
