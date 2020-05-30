@@ -87,7 +87,7 @@ void tcaselect(uint8_t i) {
   TinyWireM.beginTransmission(TCAADDR);
   TinyWireM.write(1 << i);
   TinyWireM.endTransmission();
-  delay(50); // just in case there is some switching time required
+  delay(10); // just in case there is some switching time required
 }
 
 void setup(void)
@@ -123,6 +123,9 @@ void loop(void)
   uint8_t error;
   uint8_t index; // common loop iterator
   float voltage;
+#ifdef MASKEMPTIES
+  float voltageTwo;
+#endif
 
   // Iterate the I2C multiplexer to connect the master bus to the battery module for this round of the loop
   if (currentBatteryModule == numBatteryModules) {
@@ -143,61 +146,43 @@ void loop(void)
   // 2) Adjustable current, via 4 modified TP4056 chargers and INA219 power monitors
   TinyWireM.beginTransmission(0x48);
   error = TinyWireM.endTransmission();
-  if (error == 0) {
-    // ADS1015 found on the currently attached I2C bus, collect voltage only
-    for (index = 0; index < numMeters; index++) {
+
+  // iterate across the battery slots for the current module
+  for (index = 0; index < numMeters; index++) {
+    if (error == 0) {
+      // ADS1015 found on the currently attached I2C bus, collect voltage only
       voltage = (ads.readADC_SingleEnded(index) * voltsPerDivision);
 
 #ifdef MASKEMPTIES
       delay(1);
-      float voltageTwo = (ads.readADC_SingleEnded(index) * voltsPerDivision);
-      if (abs(voltage - voltageTwo) > 0.01) {
-        // voltage fluctuating means battery not inserted
-        voltage = 0;
-      }
+      voltageTwo = (ads.readADC_SingleEnded(index) * voltsPerDivision);
 #endif
 
-      screens[currentScreen].setCursor (index * 5, lineNumber);
-      screens[currentScreen].print(voltage, 2);
       screens[currentScreen].setCursor (0, lineNumber + 1);
       screens[currentScreen].print("^ Fixed 500mA max. ^");
-    }
-  } else {
-    // Currently attached I2C bus has INA219 modules, collecting voltage and current
-    int16_t current_mA;
+    } else {
+      // Currently attached I2C bus has INA219 modules, collecting voltage and current
+      int16_t current_mA;
 
-    // INA219 equipped battery modules show current, so print the 'i' character at the end of the current line
-    screens[currentScreen].setCursor (19, lineNumber + 1);
-    screens[currentScreen].print('i');
+      // INA219 equipped battery modules show current, so print the 'i' character at the end of the current line
+      screens[currentScreen].setCursor (19, lineNumber + 1);
+      screens[currentScreen].print('i');
 
-    // Iterate the INA219 modules on the currentBatteryModule
-    for (index = 0; index < numMeters; index++) {
       voltage = meters[index].getBusVoltage_V();
       current_mA = (int16_t) (meters[index].getCurrent_mA() + .5);
 
-      // determine when battery not inserted or when finished charging
-      if (current_mA < 2) {
-        // don't show random 1 mA readings
-        current_mA = 0;
-
 #ifdef MASKEMPTIES
-        // now collect voltage again and see if it is significantly different
-        // two back-to-back voltage measurements should be nearly
-        // identical if a batery is actually connected
-        delay(1);
-        float voltageTwo = meters[index].getBusVoltage_V();
-        if (abs(voltage - voltageTwo) > 0.01) {
-          // current is near-zero and voltage fluctuating means battery not inserted
-          voltage = 0;
-        }
+      delay(1);
+      voltageTwo = meters[index].getBusVoltage_V();
 #endif
 
+      // current hovers around 0 (but not exactly 0) when battery not inserted or when finished charging
+      if (current_mA < 3) {
+        // don't show random 1-2 mA readings
+        current_mA = 0;
       }
 
-      screens[currentScreen].setCursor (index * 5, lineNumber);
-      screens[currentScreen].print(voltage, 2);
       screens[currentScreen].setCursor (index * 5, lineNumber + 1);
-
       if (current_mA < 10) {
         screens[currentScreen].print("   ");
       } else if (current_mA < 100) {
@@ -207,6 +192,19 @@ void loop(void)
       }
       screens[currentScreen].print(current_mA);
     }
+
+#ifdef MASKEMPTIES
+    if (abs(voltage - voltageTwo) > 0.01) {
+      // actual battery voltage cannot change much in the tiny amount of time between readings, so two
+      // back-to-back voltage measurements should be nearly identical if a battery is actually connected.
+      voltage = 0;
+    }
+#endif
+
+    // print voltage, regardless of which module type
+    screens[currentScreen].setCursor (index * 5, lineNumber);
+    screens[currentScreen].print(voltage, 2);
+
   }
 
   delay(10);
