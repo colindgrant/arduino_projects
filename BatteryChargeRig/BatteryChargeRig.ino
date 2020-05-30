@@ -179,6 +179,6 @@ void loop(void)
     }
   }
 
-  delay(100);
+  delay(10);
   currentBatteryModule++;
 }
