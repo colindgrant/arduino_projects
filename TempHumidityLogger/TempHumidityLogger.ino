@@ -105,7 +105,12 @@ void setup() {
 
   // Open serial communications and wait for port to open:
   MYSERIAL.begin(115200);
-  if (!Serial) delay(500); // for nrf52840 with native usb
+
+#ifdef USESERIAL1
+delay(500); // FTDI
+#else
+while (!Serial); // for nrf52840 with native usb
+#endif
 
   MYSERIAL.print("Board type: ");
   MYSERIAL.println(BOARDNAME);
@@ -190,7 +195,7 @@ void setup() {
   // here in case you want to control this LED manually via PIN 19
   Bluefruit.autoConnLed(true);
 
-  // Config the peripheral connection with maximum bandwidth 
+  // Config the peripheral connection with maximum bandwidth
   // more SRAM required by SoftDevice
   // Note: All config***() function must be called before begin()
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
@@ -239,20 +244,20 @@ void startAdv(void)
   // Secondary Scan Response packet (optional)
   // Since there is no room for 'Name' in Advertising packet
   Bluefruit.ScanResponse.addName();
-  
+
   /* Start Advertising
    * - Enable auto advertising if disconnected
    * - Interval:  fast mode = 20 ms, slow mode = 152.5 ms
    * - Timeout for fast mode is 30 seconds
    * - Start(timeout) with timeout = 0 will advertise forever (until connected)
-   * 
+   *
    * For recommended advertising interval
-   * https://developer.apple.com/library/content/qa/qa1931/_index.html   
+   * https://developer.apple.com/library/content/qa/qa1931/_index.html
    */
   Bluefruit.Advertising.restartOnDisconnect(true);
   Bluefruit.Advertising.setInterval(32, 244);    // in unit of 0.625 ms
   Bluefruit.Advertising.setFastTimeout(30);      // number of seconds in fast mode
-  Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds  
+  Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds
 }
 
 // callback invoked when central connects
@@ -414,10 +419,16 @@ void takeSample() {
   MYSERIAL.println(csv);
 
   // Write RTC and data string to Bleuart
-  char timeStr[16];
-  sprintf(timeStr, "RTC: %02hd:%02hd:%02hd", now.hour(), now.minute(), now.second());
-  bleuart.print(timeStr);  
-  bleuart.print(csv);
+  // char timeStr[16];
+  // sprintf(timeStr, "RTC: %02hd:%02hd:%02hd", now.hour(), now.minute(), now.second());
+  // bleuart.print(timeStr);
+  // bleuart.print(csv);
+
+  // Write data plot to Bleuart
+  char plotStr[32];
+  // sprintf(plotStr, "%.2f,%.2f,%.2f,%.2f", voltage, relh_sht31, temp_sht31, tmp_bmp280);
+  sprintf(plotStr, "%.2f,%.2f,%.2f", voltage, relh_sht31, temp_sht31); // no extra bmp temp
+  bleuart.println(plotStr); // needs a new line to plot
 
   // Force data to SD and update the directory entry to avoid data loss.
   if (!file.sync() || file.getWriteError()) {
@@ -454,5 +465,5 @@ void loop(void) {
   }
 
   fowardBleuart();
-  
+
 }
